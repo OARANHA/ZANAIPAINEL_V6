@@ -25,7 +25,7 @@ import {
   Database,
   Shield
 } from 'lucide-react';
-import WorkflowCanvas from './WorkflowCanvas';
+import ReactFlowCanvas from './ReactFlowCanvas';
 import NodeEditorDialog from './NodeEditorDialog';
 import WorkflowComplexityBadge from './WorkflowComplexityBadge';
 import WorkflowValidationDisplay from './WorkflowValidationDisplay';
@@ -671,7 +671,7 @@ export default function HybridWorkflowEditor({
         </TabsList>
         
         <TabsContent value="canvas" className="space-y-6">
-          <WorkflowCanvas
+          <ReactFlowCanvas
             workflow={workflowData}
             onNodeClick={handleNodeClick}
             onEditNode={handleNodeEdit}
