@@ -295,6 +295,42 @@ export default function FlowiseWorkflowManager() {
     }
   };
 
+  const deleteWorkflow = async (workflow: FlowiseWorkflow) => {
+    try {
+      const response = await fetch('/api/v1/flowise-workflows', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'delete_workflow',
+          data: { flowiseId: workflow.flowiseId }
+        })
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Workflow excluído com sucesso!",
+          description: `O workflow "${workflow.name}" foi excluído permanentemente.`,
+        });
+        // Recarregar a lista de workflows
+        await loadWorkflows();
+        await loadStats();
+      } else {
+        toast({
+          title: "Erro ao excluir workflow",
+          description: `Não foi possível excluir o workflow "${workflow.name}".`,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Erro ao excluir workflow",
+        description: `Ocorreu um erro ao tentar excluir o workflow "${workflow.name}".`,
+        variant: "destructive",
+      });
+      console.error('Erro ao excluir workflow:', error);
+    }
+  };
+
   const verifyExportedWorkflow = async (workflowId: string, workflowName: string) => {
     try {
       const flowiseBaseUrl = "https://aaranha-zania.hf.space";
@@ -1086,7 +1122,12 @@ export default function FlowiseWorkflowManager() {
                         )}
                         {exporting === workflow.id ? 'Exportando...' : (workflow.isFromAgent ? 'Exportar Agente' : 'Exportar para Flowise')}
                       </Button>
-                      <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700">
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="text-red-600 hover:text-red-700"
+                        onClick={() => deleteWorkflow(workflow)}
+                      >
                         <Trash2 className="w-4 h-4 mr-1" />
                         Excluir
                       </Button>
