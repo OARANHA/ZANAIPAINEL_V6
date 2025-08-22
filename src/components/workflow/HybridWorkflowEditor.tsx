@@ -25,7 +25,7 @@ import {
   Database,
   Shield
 } from 'lucide-react';
-import DrawflowCanvas from './DrawflowCanvas';
+import WorkflowCanvas from './WorkflowCanvas';
 import NodeEditorDialog from './NodeEditorDialog';
 import WorkflowComplexityBadge from './WorkflowComplexityBadge';
 import WorkflowValidationDisplay from './WorkflowValidationDisplay';
@@ -202,34 +202,6 @@ export default function HybridWorkflowEditor({
     }
     
     setIsNodeEditorOpen(false);
-  };
-
-  // Handle workflow change from canvas
-  const handleWorkflowChange = (updatedFlowData: string) => {
-    try {
-      const updatedWorkflow = {
-        ...workflowData,
-        flowData: updatedFlowData,
-        updatedAt: new Date().toISOString()
-      };
-      
-      setWorkflowData(updatedWorkflow);
-      
-      // Update node and edge counts
-      const flowData = JSON.parse(updatedFlowData);
-      const nodes = flowData.nodes || [];
-      const edges = flowData.edges || [];
-      
-      updatedWorkflow.nodeCount = nodes.length;
-      updatedWorkflow.edgeCount = edges.length;
-      
-      // Recalculate complexity
-      updatedWorkflow.complexityScore = calculateComplexityScore(nodes, edges);
-      
-      setWorkflowData({ ...updatedWorkflow });
-    } catch (error) {
-      console.error('Error handling workflow change:', error);
-    }
   };
 
   // Handle workflow save
@@ -699,11 +671,10 @@ export default function HybridWorkflowEditor({
         </TabsList>
         
         <TabsContent value="canvas" className="space-y-6">
-          <DrawflowCanvas
+          <WorkflowCanvas
             workflow={workflowData}
             onNodeClick={handleNodeClick}
             onEditNode={handleNodeEdit}
-            onWorkflowChange={handleWorkflowChange}
             onSave={handleSave}
             onPreview={onPreview}
           />
