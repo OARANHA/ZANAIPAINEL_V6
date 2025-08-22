@@ -1,12 +1,35 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import EditWorkflowDialog from '@/components/EditWorkflowDialog';
 import { 
   RefreshCw, 
   Download, 
@@ -26,7 +49,15 @@ import {
   Edit,
   Trash2,
   Plus,
-  Brain
+  Brain,
+  Archive,
+  Shield,
+  AlertCircle,
+  Save,
+  FileText,
+  Code,
+  Copy,
+  ExternalLink
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -74,6 +105,27 @@ interface SyncStats {
   lastSync?: string;
 }
 
+// Funções utilitárias
+const getTypeIcon = (type: string) => {
+  switch (type) {
+    case 'CHATFLOW': return <Users className="w-4 h-4" />;
+    case 'AGENTFLOW': return <Zap className="w-4 h-4" />;
+    case 'MULTIAGENT': return <BarChart3 className="w-4 h-4" />;
+    case 'ASSISTANT': return <Database className="w-4 h-4" />;
+    default: return <Settings className="w-4 h-4" />;
+  }
+};
+
+const getTypeLabel = (type: string) => {
+  switch (type) {
+    case 'CHATFLOW': return 'Chatbot';
+    case 'AGENTFLOW': return 'Agente IA';
+    case 'MULTIAGENT': return 'Multi-Agentes';
+    case 'ASSISTANT': return 'Assistente';
+    default: return type;
+  }
+};
+
 export default function FlowiseWorkflowManager() {
   const { toast } = useToast();
   const [workflows, setWorkflows] = useState<FlowiseWorkflow[]>([]);
@@ -91,6 +143,28 @@ export default function FlowiseWorkflowManager() {
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [exportLogs, setExportLogs] = useState<any[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  
+  // Estados para o modal de exclusão avançado
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [selectedWorkflow, setSelectedWorkflow] = useState<FlowiseWorkflow | null>(null);
+  const [deleteOptions, setDeleteOptions] = useState({
+    deleteFromZanAI: true,
+    deleteFromFlowise: false,
+    createBackup: false
+  });
+  const [isDeleting, setIsDeleting] = useState(false);
+  
+  // Estados para o modal de edição de workflow
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingWorkflow, setEditingWorkflow] = useState<FlowiseWorkflow | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    description: '',
+    category: '',
+    deployed: false,
+    isPublic: false
+  });
 
   useEffect(() => {
     loadWorkflows();
@@ -295,14 +369,273 @@ export default function FlowiseWorkflowManager() {
     }
   };
 
+  // Função para abrir o modal de exclusão avançado
+  const openDeleteDialog = (workflow: FlowiseWorkflow) => {
+    setSelectedWorkflow(workflow);
+    setDeleteOptions({
+      deleteFromZanAI: true,
+      deleteFromFlowise: false,
+      createBackup: false
+    });
+    setDeleteDialogOpen(true);
+  };
+
+  // Função para criar backup antes da exclusão
+  const createWorkflowBackup = async (workflow: FlowiseWorkflow) => {
+    try {
+      const backupData = {
+        id: workflow.id,
+        flowiseId: workflow.flowiseId,
+        name: workflow.name,
+        description: workflow.description,
+        type: workflow.type,
+        flowData: workflow.flowData,
+        deployed: workflow.deployed,
+        isPublic: workflow.isPublic,
+        category: workflow.category,
+        workspaceId: workflow.workspaceId,
+        complexityScore: workflow.complexityScore,
+        nodeCount: workflow.nodeCount,
+        edgeCount: workflow.edgeCount,
+        maxDepth: workflow.maxDepth,
+        capabilities: workflow.capabilities,
+        nodes: workflow.nodes,
+        connections: workflow.connections,
+        createdAt: workflow.createdAt,
+        updatedAt: workflow.updatedAt,
+        backupCreatedAt: new Date().toISOString()
+      };
+
+      // Criar blob para download
+      const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `workflow_backup_${workflow.name}_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: "✅ Backup criado com sucesso!",
+        description: `O backup do workflow "${workflow.name}" foi baixado.`,
+      });
+      
+      return true;
+    } catch (error) {
+      toast({
+        title: "Erro ao criar backup",
+        description: `Não foi possível criar o backup do workflow "${workflow.name}".`,
+        variant: "destructive",
+      });
+      console.error('Erro ao criar backup:', error);
+      return false;
+    }
+  };
+
+  // Função principal de exclusão com opções avançadas
+  const executeAdvancedDelete = async () => {
+    if (!selectedWorkflow) return;
+
+    setIsDeleting(true);
+    
+    try {
+      // Criar backup se solicitado
+      if (deleteOptions.createBackup) {
+        const backupSuccess = await createWorkflowBackup(selectedWorkflow);
+        if (!backupSuccess) {
+          // Se falhar o backup, perguntar se quer continuar
+          if (!confirm('O backup falhou. Deseja continuar com a exclusão anyway?')) {
+            setIsDeleting(false);
+            return;
+          }
+        }
+      }
+
+      let results = {
+        deletedFromZanAI: false,
+        deletedFromFlowise: false,
+        errors: [] as string[]
+      };
+
+      // Excluir do Flowise se solicitado
+      if (deleteOptions.deleteFromFlowise) {
+        try {
+          const flowiseBaseUrl = "https://aaranha-zania.hf.space";
+          const deleteUrl = `${flowiseBaseUrl}/api/v1/chatflows/${selectedWorkflow.flowiseId}`;
+          
+          console.log(`🗑️ Excluindo workflow do Flowise externo: ${deleteUrl}`);
+          
+          const flowiseResponse = await fetch(deleteUrl, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer wNFL5HJcOA3RwJdKiVTUWqdzigK7OCUwRKo9KEgjenw`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (flowiseResponse.ok) {
+            results.deletedFromFlowise = true;
+            console.log('✅ Workflow excluído com sucesso do Flowise externo');
+          } else {
+            const errorText = await flowiseResponse.text();
+            const error = `Falha ao excluir do Flowise: ${flowiseResponse.status} - ${errorText}`;
+            results.errors.push(error);
+            console.warn('⚠️ Não foi possível excluir do Flowise:', error);
+          }
+        } catch (error) {
+          const errorMsg = `Erro ao excluir do Flowise: ${error instanceof Error ? error.message : 'Erro desconhecido'}`;
+          results.errors.push(errorMsg);
+          console.error('❌ Erro ao excluir do Flowise:', error);
+        }
+      }
+
+      // Excluir do ZanAI se solicitado
+      if (deleteOptions.deleteFromZanAI) {
+        try {
+          const response = await fetch('/api/v1/flowise-workflows', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'delete_workflow',
+              data: { 
+                flowiseId: selectedWorkflow.flowiseId,
+                skipFlowiseDelete: !deleteOptions.deleteFromFlowise // Não tentar excluir do Flowise novamente se já fizemos
+              }
+            })
+          });
+
+          if (response.ok) {
+            const result = await response.json();
+            if (result.success) {
+              results.deletedFromZanAI = true;
+              console.log('✅ Workflow excluído com sucesso do ZanAI');
+            } else {
+              results.errors.push(result.error || 'Falha ao excluir do ZanAI');
+            }
+          } else {
+            const errorText = await response.text();
+            results.errors.push(`Falha na API do ZanAI: ${response.status} - ${errorText}`);
+          }
+        } catch (error) {
+          const errorMsg = `Erro ao excluir do ZanAI: ${error instanceof Error ? error.message : 'Erro desconhecido'}`;
+          results.errors.push(errorMsg);
+          console.error('❌ Erro ao excluir do ZanAI:', error);
+        }
+      }
+
+      // Mostrar resultado ao usuário
+      showDeleteResult(results);
+
+      // Fechar modal e recarregar dados
+      setDeleteDialogOpen(false);
+      setSelectedWorkflow(null);
+      await loadWorkflows();
+      await loadStats();
+
+    } catch (error) {
+      toast({
+        title: "Erro inesperado",
+        description: "Ocorreu um erro durante o processo de exclusão.",
+        variant: "destructive",
+      });
+      console.error('Erro na exclusão avançada:', error);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // Função para mostrar o resultado da exclusão
+  const showDeleteResult = (results: { deletedFromZanAI: boolean; deletedFromFlowise: boolean; errors: string[] }) => {
+    const { deletedFromZanAI, deletedFromFlowise, errors } = results;
+    
+    if (deletedFromZanAI && deletedFromFlowise && errors.length === 0) {
+      // Sucesso completo
+      toast({
+        title: "✅ Exclusão completa!",
+        description: `O workflow "${selectedWorkflow?.name}" foi excluído do ZanAI e do Flowise com sucesso.`,
+      });
+    } else if (deletedFromZanAI && !deletedFromFlowise) {
+      // Excluído apenas do ZanAI
+      if (errors.length > 0) {
+        toast({
+          title: "⚠️ Exclusão parcial com erros",
+          description: `O workflow foi excluído do ZanAI, mas ocorreram erros ao excluir do Flowise.`,
+          variant: "default",
+        });
+      } else {
+        toast({
+          title: "✅ Excluído do ZanAI",
+          description: `O workflow "${selectedWorkflow?.name}" foi excluído apenas do banco ZanAI.`,
+        });
+      }
+    } else if (!deletedFromZanAI && deletedFromFlowise) {
+      // Excluído apenas do Flowise
+      toast({
+        title: "✅ Excluído do Flowise",
+        description: `O workflow "${selectedWorkflow?.name}" foi excluído apenas do Flowise.`,
+      });
+    } else if (errors.length > 0) {
+      // Apenas erros
+      toast({
+        title: "❌ Falha na exclusão",
+        description: `Não foi possível excluir o workflow. Erros: ${errors.join(', ')}`,
+        variant: "destructive",
+      });
+    } else {
+      // Nenhuma ação realizada
+      toast({
+        title: "ℹ️ Nenhuma ação realizada",
+        description: "Nenhuma opção de exclusão foi selecionada.",
+      });
+    }
+
+    // Mostrar erros no console
+    if (errors.length > 0) {
+      console.error('Erros durante a exclusão:', errors);
+    }
+  };
+
+  // Função deleteWorkflow original (mantida para compatibilidade)
   const deleteWorkflow = async (workflow: FlowiseWorkflow) => {
+    openDeleteDialog(workflow);
+  };
+
+  // Funções para edição de workflow
+  const openEditDialog = (workflow: FlowiseWorkflow) => {
+    setEditingWorkflow(workflow);
+    setEditForm({
+      name: workflow.name,
+      description: workflow.description || '',
+      category: workflow.category || '',
+      deployed: workflow.deployed,
+      isPublic: workflow.isPublic
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleEditFormChange = (field: string, value: string | boolean) => {
+    setEditForm(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const saveWorkflowEdit = async () => {
+    if (!editingWorkflow) return;
+
+    setIsEditing(true);
     try {
       const response = await fetch('/api/v1/flowise-workflows', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'delete_workflow',
-          data: { flowiseId: workflow.flowiseId }
+          action: 'update_workflow',
+          data: {
+            flowiseId: editingWorkflow.flowiseId,
+            ...editForm
+          }
         })
       });
 
@@ -310,55 +643,47 @@ export default function FlowiseWorkflowManager() {
         const result = await response.json();
         
         if (result.success) {
-          if (result.details?.deletedFromFlowise && result.details?.deletedFromDatabase) {
-            // Sucesso completo - excluído de ambos os sistemas
-            toast({
-              title: "✅ Workflow excluído com sucesso!",
-              description: `O workflow "${workflow.name}" foi excluído permanentemente do Flowise e do ZanAI.`,
-            });
-          } else if (result.details?.deletedFromDatabase && !result.details?.deletedFromFlowise) {
-            // Sucesso parcial - excluído apenas do banco local
-            toast({
-              title: "⚠️ Workflow excluído parcialmente",
-              description: `O workflow "${workflow.name}" foi excluído do ZanAI, mas houve um problema ao excluir do Flowise.`,
-              variant: "default",
-            });
-            console.warn('Aviso de exclusão parcial:', result.warning);
-          } else {
-            // Outro cenário de sucesso
-            toast({
-              title: "Workflow excluído!",
-              description: result.message || `O workflow "${workflow.name}" foi processado.`,
-            });
-          }
+          toast({
+            title: "✅ Workflow atualizado!",
+            description: `O workflow "${editForm.name}" foi atualizado com sucesso.`,
+          });
           
-          // Recarregar a lista de workflows
+          // Fechar modal e recarregar dados
+          setEditDialogOpen(false);
+          setEditingWorkflow(null);
           await loadWorkflows();
           await loadStats();
         } else {
           toast({
-            title: "Erro ao excluir workflow",
-            description: result.error || `Não foi possível excluir o workflow "${workflow.name}".`,
+            title: "Erro ao atualizar",
+            description: result.error || "Não foi possível atualizar o workflow.",
             variant: "destructive",
           });
         }
       } else {
         const errorText = await response.text();
         toast({
-          title: "Erro ao excluir workflow",
-          description: `Não foi possível excluir o workflow "${workflow.name}". Status: ${response.status}`,
+          title: "Erro na API",
+          description: `Falha na comunicação: ${response.status} - ${errorText}`,
           variant: "destructive",
         });
-        console.error('Erro na resposta da API:', errorText);
       }
     } catch (error) {
       toast({
-        title: "Erro ao excluir workflow",
-        description: `Ocorreu um erro ao tentar excluir o workflow "${workflow.name}".`,
+        title: "Erro inesperado",
+        description: "Ocorreu um erro durante a atualização do workflow.",
         variant: "destructive",
       });
-      console.error('Erro ao excluir workflow:', error);
+      console.error('Erro na edição do workflow:', error);
+    } finally {
+      setIsEditing(false);
     }
+  };
+
+  const openWorkflowInCanvas = (workflow: FlowiseWorkflow) => {
+    const flowiseBaseUrl = "https://aaranha-zania.hf.space";
+    const canvasUrl = `${flowiseBaseUrl}/canvas/${workflow.flowiseId}`;
+    window.open(canvasUrl, '_blank');
   };
 
   const verifyExportedWorkflow = async (workflowId: string, workflowName: string) => {
@@ -807,30 +1132,144 @@ export default function FlowiseWorkflowManager() {
     }
   };
 
+  // Funções de exportação avançada
+  const exportWorkflowAsJSON = (workflow: FlowiseWorkflow) => {
+    try {
+      const exportData = {
+        id: workflow.id,
+        flowiseId: workflow.flowiseId,
+        name: workflow.name,
+        description: workflow.description,
+        type: workflow.type,
+        deployed: workflow.deployed,
+        isPublic: workflow.isPublic,
+        category: workflow.category,
+        complexityScore: workflow.complexityScore,
+        nodeCount: workflow.nodeCount,
+        edgeCount: workflow.edgeCount,
+        maxDepth: workflow.maxDepth,
+        capabilities: typeof workflow.capabilities === 'string' 
+          ? JSON.parse(workflow.capabilities) 
+          : workflow.capabilities || {},
+        nodes: typeof workflow.nodes === 'string' 
+          ? JSON.parse(workflow.nodes) 
+          : workflow.nodes || [],
+        connections: typeof workflow.connections === 'string' 
+          ? JSON.parse(workflow.connections) 
+          : workflow.connections || [],
+        createdAt: workflow.createdAt,
+        updatedAt: workflow.updatedAt,
+        exportedAt: new Date().toISOString(),
+        exportVersion: '1.0'
+      };
+
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `workflow_${workflow.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: "✅ Workflow exportado como JSON",
+        description: `O workflow "${workflow.name}" foi exportado com sucesso.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Erro na exportação",
+        description: `Não foi possível exportar o workflow como JSON.`,
+        variant: "destructive",
+      });
+      console.error('Erro ao exportar workflow como JSON:', error);
+    }
+  };
+
+  const exportWorkflowAsConfig = (workflow: FlowiseWorkflow) => {
+    try {
+      const configData = {
+        name: workflow.name,
+        description: workflow.description || '',
+        type: workflow.type,
+        category: workflow.category || 'general',
+        deployed: workflow.deployed,
+        isPublic: workflow.isPublic,
+        flowiseId: workflow.flowiseId,
+        settings: {
+          complexity: {
+            score: workflow.complexityScore,
+            nodeCount: workflow.nodeCount,
+            edgeCount: workflow.edgeCount,
+            maxDepth: workflow.maxDepth
+          },
+          capabilities: typeof workflow.capabilities === 'string' 
+            ? JSON.parse(workflow.capabilities) 
+            : workflow.capabilities || {}
+        },
+        urls: {
+          chat: `https://aaranha-zania.hf.space/chat/${workflow.flowiseId}`,
+          edit: `https://aaranha-zania.hf.space/canvas/${workflow.flowiseId}`,
+          api: `https://aaranha-zania.hf.space/api/v1/chatflows/${workflow.flowiseId}`
+        },
+        exportedAt: new Date().toISOString()
+      };
+
+      const blob = new Blob([JSON.stringify(configData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `config_${workflow.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: "✅ Configuração exportada",
+        description: `A configuração do workflow "${workflow.name}" foi exportada com sucesso.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Erro na exportação",
+        description: `Não foi possível exportar a configuração do workflow.`,
+        variant: "destructive",
+      });
+      console.error('Erro ao exportar configuração do workflow:', error);
+    }
+  };
+
+  const copyWorkflowIdToClipboard = (workflow: FlowiseWorkflow) => {
+    try {
+      const clipboardData = {
+        id: workflow.flowiseId,
+        name: workflow.name,
+        type: workflow.type,
+        chatUrl: `https://aaranha-zania.hf.space/chat/${workflow.flowiseId}`,
+        editUrl: `https://aaranha-zania.hf.space/canvas/${workflow.flowiseId}`
+      };
+      
+      navigator.clipboard.writeText(JSON.stringify(clipboardData, null, 2));
+      
+      toast({
+        title: "✅ ID copiado!",
+        description: `O ID do workflow "${workflow.name}" foi copiado para a área de transferência.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Erro ao copiar",
+        description: `Não foi possível copiar o ID do workflow.`,
+        variant: "destructive",
+      });
+      console.error('Erro ao copiar ID do workflow:', error);
+    }
+  };
+
   const getComplexityColor = (score: number) => {
     if (score <= 30) return 'text-green-600 bg-green-100';
     if (score <= 60) return 'text-yellow-600 bg-yellow-100';
     return 'text-red-600 bg-red-100';
-  };
-
-  const getTypeIcon = (type: string) => {
-    switch (type) {
-      case 'CHATFLOW': return <Users className="w-4 h-4" />;
-      case 'AGENTFLOW': return <Zap className="w-4 h-4" />;
-      case 'MULTIAGENT': return <BarChart3 className="w-4 h-4" />;
-      case 'ASSISTANT': return <Database className="w-4 h-4" />;
-      default: return <Settings className="w-4 h-4" />;
-    }
-  };
-
-  const getTypeLabel = (type: string) => {
-    switch (type) {
-      case 'CHATFLOW': return 'Chatbot';
-      case 'AGENTFLOW': return 'Agente IA';
-      case 'MULTIAGENT': return 'Multi-Agentes';
-      case 'ASSISTANT': return 'Assistente';
-      default: return type;
-    }
   };
 
   const filteredWorkflows = workflows.filter(workflow => {
@@ -841,6 +1280,112 @@ export default function FlowiseWorkflowManager() {
     if (filters.search && !workflow.name.toLowerCase().includes(filters.search.toLowerCase())) return false;
     return true;
   });
+
+  // Modal de confirmação de exclusão avançado
+  const DeleteConfirmationModal = () => (
+    <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+      <AlertDialogContent className="max-w-md">
+        <AlertDialogHeader>
+          <AlertDialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-orange-500" />
+            Confirmar Exclusão do Workflow
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            Você está prestes a excluir o workflow <strong>"{selectedWorkflow?.name}"</strong>. 
+            Escolha as opções de exclusão abaixo:
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        
+        <div className="space-y-4 py-4">
+          {/* Opções de exclusão */}
+          <div className="space-y-3">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="delete-zanai"
+                checked={deleteOptions.deleteFromZanAI}
+                onCheckedChange={(checked) => 
+                  setDeleteOptions(prev => ({ ...prev, deleteFromZanAI: checked as boolean }))
+                }
+              />
+              <Label htmlFor="delete-zanai" className="flex items-center gap-2 cursor-pointer">
+                <Database className="w-4 h-4" />
+                Excluir do banco ZanAI
+              </Label>
+            </div>
+            
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="delete-flowise"
+                checked={deleteOptions.deleteFromFlowise}
+                onCheckedChange={(checked) => 
+                  setDeleteOptions(prev => ({ ...prev, deleteFromFlowise: checked as boolean }))
+                }
+              />
+              <Label htmlFor="delete-flowise" className="flex items-center gap-2 cursor-pointer">
+                <Shield className="w-4 h-4" />
+                Excluir do motor ZanAI (Flowise)
+              </Label>
+            </div>
+            
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="create-backup"
+                checked={deleteOptions.createBackup}
+                onCheckedChange={(checked) => 
+                  setDeleteOptions(prev => ({ ...prev, createBackup: checked as boolean }))
+                }
+              />
+              <Label htmlFor="create-backup" className="flex items-center gap-2 cursor-pointer">
+                <Archive className="w-4 h-4" />
+                Criar backup antes de excluir
+              </Label>
+            </div>
+          </div>
+          
+          {/* Aviso importante */}
+          <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-orange-600 mt-0.5 flex-shrink-0" />
+              <div className="text-sm text-orange-800">
+                <p className="font-medium mb-1">Atenção:</p>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li>A exclusão do Flowise é permanente e não pode ser desfeita</li>
+                  <li>O backup será baixado como arquivo JSON</li>
+                  <li>Verifique as opções antes de confirmar</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isDeleting}>
+            Cancelar
+          </AlertDialogCancel>
+          <AlertDialogAction
+            onClick={(e) => {
+              e.preventDefault();
+              executeAdvancedDelete();
+            }}
+            disabled={isDeleting || (!deleteOptions.deleteFromZanAI && !deleteOptions.deleteFromFlowise)}
+            className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+          >
+            {isDeleting ? (
+              <>
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                Excluindo...
+              </>
+            ) : (
+              <>
+                <Trash2 className="w-4 h-4 mr-2" />
+                Confirmar Exclusão
+              </>
+            )}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -1135,23 +1680,60 @@ export default function FlowiseWorkflowManager() {
                         <Eye className="w-4 h-4 mr-1" />
                         Visualizar
                       </Button>
-                      <Button size="sm" variant="outline">
+                      <Button size="sm" variant="outline" onClick={() => openEditDialog(workflow)}>
                         <Edit className="w-4 h-4 mr-1" />
                         Editar
                       </Button>
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
-                        onClick={() => exportToFlowise(workflow)}
-                        disabled={exporting === workflow.id}
-                      >
-                        {exporting === workflow.id ? (
-                          <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
-                        ) : (
-                          <Download className="w-4 h-4 mr-1" />
-                        )}
-                        {exporting === workflow.id ? 'Exportando...' : (workflow.isFromAgent ? 'Exportar Agente' : 'Exportar para Flowise')}
-                      </Button>
+                      
+                      {/* Menu dropdown de exportação */}
+                      <div className="relative group">
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          className="flex items-center gap-1"
+                        >
+                          <Download className="w-4 h-4" />
+                          Exportar
+                        </Button>
+                        <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
+                          <div className="py-1">
+                            <button
+                              onClick={() => exportToFlowise(workflow)}
+                              disabled={exporting === workflow.id}
+                              className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 disabled:opacity-50 flex items-center gap-2"
+                            >
+                              {exporting === workflow.id ? (
+                                <RefreshCw className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Download className="w-3 h-3" />
+                              )}
+                              {exporting === workflow.id ? 'Exportando...' : 'Para Flowise'}
+                            </button>
+                            <button
+                              onClick={() => exportWorkflowAsJSON(workflow)}
+                              className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 flex items-center gap-2"
+                            >
+                              <FileText className="w-3 h-3" />
+                              Como JSON
+                            </button>
+                            <button
+                              onClick={() => exportWorkflowAsConfig(workflow)}
+                              className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 flex items-center gap-2"
+                            >
+                              <Code className="w-3 h-3" />
+                              Configuração
+                            </button>
+                            <button
+                              onClick={() => copyWorkflowIdToClipboard(workflow)}
+                              className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 flex items-center gap-2"
+                            >
+                              <Copy className="w-3 h-3" />
+                              Copiar ID
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      
                       <Button 
                         size="sm" 
                         variant="outline" 
@@ -1325,6 +1907,26 @@ export default function FlowiseWorkflowManager() {
           </CardContent>
         </Card>
       )}
+      
+      {/* Modal de edição de workflow */}
+      <EditWorkflowDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        editingWorkflow={editingWorkflow}
+        editForm={editForm}
+        onFormChange={handleEditFormChange}
+        onSave={saveWorkflowEdit}
+        isEditing={isEditing}
+        onOpenCanvas={openWorkflowInCanvas}
+        onExportToFlowise={exportToFlowise}
+        exporting={exporting}
+        onExportAsJSON={exportWorkflowAsJSON}
+        onExportAsConfig={exportWorkflowAsConfig}
+        onCopyToClipboard={copyWorkflowIdToClipboard}
+      />
+      
+      {/* Modal de confirmação de exclusão */}
+      <DeleteConfirmationModal />
     </div>
   );
 }

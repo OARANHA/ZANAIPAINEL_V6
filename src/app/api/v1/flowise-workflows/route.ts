@@ -463,35 +463,39 @@ async function updateWorkflow({ flowiseId, data }: { flowiseId: string; data: Pa
 }
 
 // Deletar workflow
-async function deleteWorkflow({ flowiseId }: { flowiseId: string }) {
+async function deleteWorkflow({ flowiseId, skipFlowiseDelete = false }: { flowiseId: string; skipFlowiseDelete?: boolean }) {
   try {
-    // 1. Primeiro excluir do Flowise externo
-    const flowiseBaseUrl = "https://aaranha-zania.hf.space";
-    const deleteUrl = `${flowiseBaseUrl}/api/v1/chatflows/${flowiseId}`;
-    
-    console.log(`🗑️ Excluindo workflow do Flowise externo: ${deleteUrl}`);
-    
-    const flowiseResponse = await fetch(deleteUrl, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer wNFL5HJcOA3RwJdKiVTUWqdzigK7OCUwRKo9KEgjenw`,
-        'Content-Type': 'application/json'
-      }
-    });
-
     let deletedFromFlowise = false;
     let flowiseError = null;
 
-    if (!flowiseResponse.ok) {
-      const errorText = await flowiseResponse.text();
-      flowiseError = `Falha ao excluir do Flowise: ${flowiseResponse.status} - ${errorText}`;
-      console.warn('⚠️ Não foi possível excluir do Flowise:', flowiseError);
+    // 1. Excluir do Flowise externo (se não for pular)
+    if (!skipFlowiseDelete) {
+      const flowiseBaseUrl = "https://aaranha-zania.hf.space";
+      const deleteUrl = `${flowiseBaseUrl}/api/v1/chatflows/${flowiseId}`;
+      
+      console.log(`🗑️ Excluindo workflow do Flowise externo: ${deleteUrl}`);
+      
+      const flowiseResponse = await fetch(deleteUrl, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer wNFL5HJcOA3RwJdKiVTUWqdzigK7OCUwRKo9KEgjenw`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!flowiseResponse.ok) {
+        const errorText = await flowiseResponse.text();
+        flowiseError = `Falha ao excluir do Flowise: ${flowiseResponse.status} - ${errorText}`;
+        console.warn('⚠️ Não foi possível excluir do Flowise:', flowiseError);
+      } else {
+        deletedFromFlowise = true;
+        console.log('✅ Workflow excluído com sucesso do Flowise externo');
+      }
     } else {
-      deletedFromFlowise = true;
-      console.log('✅ Workflow excluído com sucesso do Flowise externo');
+      console.log('⏭️ Pulando exclusão do Flowise externo (skipFlowiseDelete = true)');
     }
 
-    // 2. Depois excluir do banco local (independente do resultado do Flowise)
+    // 2. Excluir do banco local
     const deleted = await db.flowiseWorkflow.delete({
       where: { flowiseId }
     });
@@ -507,21 +511,25 @@ async function deleteWorkflow({ flowiseId }: { flowiseId: string }) {
           name: deleted.name,
           deletedFromFlowise: deletedFromFlowise,
           flowiseError: flowiseError,
+          skipFlowiseDelete: skipFlowiseDelete,
           flowiseId: flowiseId
         }),
-        status: deletedFromFlowise ? 'SUCCESS' : 'PARTIAL'
+        status: deletedFromFlowise || skipFlowiseDelete ? 'SUCCESS' : 'PARTIAL'
       }
     });
 
     // 4. Retornar resposta apropriada
-    if (deletedFromFlowise) {
+    if (deletedFromFlowise || skipFlowiseDelete) {
       return NextResponse.json({
         success: true,
         deleted,
-        message: 'Workflow excluído com sucesso do banco de dados e do Flowise',
+        message: skipFlowiseDelete 
+          ? 'Workflow excluído com sucesso do banco de dados (exclusão do Flowise pulada)'
+          : 'Workflow excluído com sucesso do banco de dados e do Flowise',
         details: {
-          deletedFromFlowise: true,
-          deletedFromDatabase: true
+          deletedFromFlowise: deletedFromFlowise,
+          deletedFromDatabase: true,
+          skipFlowiseDelete: skipFlowiseDelete
         }
       });
     } else {
@@ -533,7 +541,8 @@ async function deleteWorkflow({ flowiseId }: { flowiseId: string }) {
         details: {
           deletedFromFlowise: false,
           deletedFromDatabase: true,
-          flowiseError: flowiseError
+          flowiseError: flowiseError,
+          skipFlowiseDelete: skipFlowiseDelete
         }
       });
     }
