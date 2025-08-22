@@ -151,36 +151,40 @@ export default function StudioPage() {
 
   const loadExportedWorkflows = async () => {
     try {
-      // Simular workflows exportados do Learning
-      const mockExportedWorkflows: ExportedWorkflow[] = [
-        {
-          id: 'exported_1',
-          name: 'Combinação Soft.Eng.+Revisor Codigo',
-          description: 'Workflow combinando Software Engineer e Code Reviewer',
-          type: 'AGENTFLOW',
-          complexityScore: 75,
-          nodeCount: 8,
-          edgeCount: 7,
-          exportedAt: new Date().toISOString(),
+      // Buscar workflows que foram realmente importados via learning
+      const response = await fetch('/api/v1/studio/workflows', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'get_imported_workflows',
+          data: { source: 'learning' }
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const importedWorkflows = data.workflows || [];
+        
+        // Transformar os workflows importados para o formato esperado
+        const transformedWorkflows: ExportedWorkflow[] = importedWorkflows.map((workflow: any) => ({
+          id: workflow.id,
+          name: workflow.name,
+          description: workflow.description,
+          type: workflow.type,
+          complexityScore: workflow.complexityScore || 0,
+          nodeCount: workflow.nodeCount || 0,
+          edgeCount: workflow.edgeCount || 0,
+          exportedAt: workflow.importedAt || workflow.updatedAt || new Date().toISOString(),
           source: 'learning',
-          status: 'ready',
-          flowData: '{}' // JSON structure would be here
-        },
-        {
-          id: 'exported_2',
-          name: 'Customer Support Bot',
-          description: 'Bot de suporte ao cliente com múltiplos agentes',
-          type: 'CHATFLOW',
-          complexityScore: 60,
-          nodeCount: 6,
-          edgeCount: 5,
-          exportedAt: new Date(Date.now() - 3600000).toISOString(),
-          source: 'learning',
-          status: 'draft',
-          flowData: '{}'
-        }
-      ];
-      setExportedWorkflows(mockExportedWorkflows);
+          status: workflow.status || 'draft',
+          flowData: workflow.flowData || '{}'
+        }));
+        
+        setExportedWorkflows(transformedWorkflows);
+      } else {
+        // Se a API falhar, mostrar array vazio em vez de dados mockados
+        setExportedWorkflows([]);
+      }
     } catch (error) {
       console.error('Erro ao carregar workflows exportados:', error);
       setExportedWorkflows([]);
@@ -274,8 +278,8 @@ export default function StudioPage() {
           />
           
           <ElegantCard
-            title="Workflows Exportados"
-            description="Do Learning"
+            title="Workflows Importados"
+            description="Do Learning (Aprovados)"
             icon={Workflow}
             iconColor="text-purple-600"
             bgColor="bg-purple-100 dark:bg-purple-900/20"
@@ -490,18 +494,19 @@ export default function StudioPage() {
             <TabsContent value="workflows" className="space-y-6">
               <Card className="shadow-lg">
                 <CardHeader>
-                  <CardTitle className="text-xl font-semibold">Workflows Exportados</CardTitle>
+                  <CardTitle className="text-xl font-semibold">Workflows Importados do Learning</CardTitle>
                   <CardDescription>
-                    Workflows exportados do Learning, prontos para edição e deploy
+                    Workflows que foram analisados e aprovados no Learning, prontos para desenvolvimento e deploy
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   {exportedWorkflows.length === 0 ? (
                     <div className="text-center py-12">
                       <Workflow className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-                      <h3 className="text-lg font-semibold mb-2">Nenhum workflow exportado</h3>
+                      <h3 className="text-lg font-semibold mb-2">Nenhum workflow importado</h3>
                       <p className="text-muted-foreground mb-4">
-                        Exporte workflows do Learning para que eles apareçam aqui.
+                        Nenhum workflow foi importado do Learning ainda. 
+                        Analise e aprove workflows na seção de Learning primeiro.
                       </p>
                       <Link href="/admin/learning">
                         <Button>
@@ -536,8 +541,8 @@ export default function StudioPage() {
                               </div>
                               
                               <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                <span>Exportado: {new Date(workflow.exportedAt).toLocaleDateString()}</span>
-                                <span>Fonte: {workflow.source}</span>
+                                <span>Importado: {new Date(workflow.exportedAt).toLocaleDateString()}</span>
+                                <span>Aprovado no Learning</span>
                               </div>
                               
                               <div className="flex gap-2 pt-2">

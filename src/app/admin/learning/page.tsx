@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Label } from '@/components/ui/label';
 import { 
   BookOpen, 
   BarChart3, 
@@ -34,7 +35,15 @@ import {
   ArrowLeft,
   Plus,
   Filter,
-  Search
+  Search,
+  Info,
+  Activity,
+  Layers,
+  GitBranch,
+  Cpu,
+  Network,
+  Timer,
+  Award
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -103,10 +112,12 @@ export default function LearningPage() {
   // Workflow selection and editing state
   const [availableWorkflows, setAvailableWorkflows] = useState<FlowiseWorkflow[]>([]);
   const [selectedWorkflow, setSelectedWorkflow] = useState<FlowiseWorkflow | null>(null);
+  const [detailsWorkflow, setDetailsWorkflow] = useState<FlowiseWorkflow | null>(null);
   const [isLoadingWorkflows, setIsLoadingWorkflows] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
   const [isWorkflowDialogOpen, setIsWorkflowDialogOpen] = useState(false);
+  const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
 
   useEffect(() => {
     loadStats();
@@ -187,6 +198,11 @@ export default function LearningPage() {
     
     // Show success message
     console.log('Workflow selecionado com sucesso:', workflow.name);
+  };
+
+  const handleWorkflowDetails = (workflow: FlowiseWorkflow) => {
+    setDetailsWorkflow(workflow);
+    setIsDetailsDialogOpen(true);
   };
 
   const handleWorkflowSave = async (updatedWorkflow: FlowiseWorkflow) => {
@@ -451,9 +467,21 @@ export default function LearningPage() {
                                   variant="outline"
                                   onClick={(e) => {
                                     e.stopPropagation();
+                                    handleWorkflowDetails(workflow);
+                                  }}
+                                >
+                                  <Info className="w-4 h-4 mr-1" />
+                                  Detalhes
+                                </Button>
+                                <Button 
+                                  size="sm" 
+                                  variant="outline"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
                                     handleWorkflowSelect(workflow);
                                   }}
                                 >
+                                  <CheckCircle className="w-4 h-4 mr-1" />
                                   Selecionar
                                 </Button>
                               </div>
@@ -708,6 +736,323 @@ export default function LearningPage() {
           </div>
         )}
       </div>
+
+      {/* Workflow Details Modal */}
+      <Dialog open={isDetailsDialogOpen} onOpenChange={setIsDetailsDialogOpen}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Info className="w-5 h-5" />
+              Análise Detalhada do Workflow
+            </DialogTitle>
+            <DialogDescription>
+              Informações completas sobre a estrutura, complexidade e capacidades do workflow
+            </DialogDescription>
+          </DialogHeader>
+
+          {detailsWorkflow && (
+            <div className="space-y-6">
+              {/* Header Information */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Informações Básicas</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div>
+                      <Label className="text-sm font-medium">Nome</Label>
+                      <p className="text-lg font-semibold">{detailsWorkflow.name}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Descrição</Label>
+                      <p className="text-muted-foreground">
+                        {detailsWorkflow.description || 'Sem descrição disponível'}
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label className="text-sm font-medium">Tipo</Label>
+                        <Badge variant="outline" className="mt-1">
+                          {detailsWorkflow.type}
+                        </Badge>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium">Categoria</Label>
+                        <Badge variant="secondary" className="mt-1">
+                          {detailsWorkflow.category || 'general'}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label className="text-sm font-medium">Status</Label>
+                        <div className="mt-1">
+                          {detailsWorkflow.deployed ? (
+                            <Badge className="bg-green-100 text-green-800">
+                              <CheckCircle className="w-3 h-3 mr-1" />
+                              Deployed
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline">
+                              Não Deployed
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium">Acesso</Label>
+                        <div className="mt-1">
+                          {detailsWorkflow.isPublic ? (
+                            <Badge className="bg-blue-100 text-blue-800">
+                              Público
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline">
+                              Privado
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Activity className="w-5 h-5" />
+                      Análise de Complexidade
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-primary mb-2">
+                        {detailsWorkflow.complexityScore}/100
+                      </div>
+                      <Badge 
+                        className={
+                          detailsWorkflow.complexityScore <= 33 
+                            ? 'bg-green-100 text-green-800' 
+                            : detailsWorkflow.complexityScore <= 66 
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : 'bg-red-100 text-red-800'
+                        }
+                      >
+                        {detailsWorkflow.complexityScore <= 33 ? 'Baixa' : 
+                         detailsWorkflow.complexityScore <= 66 ? 'Média' : 'Alta'} Complexidade
+                      </Badge>
+                    </div>
+                    
+                    <div className="grid grid-cols-3 gap-4 text-center">
+                      <div className="p-3 bg-muted rounded-lg">
+                        <Layers className="w-6 h-6 mx-auto mb-2 text-blue-600" />
+                        <div className="text-2xl font-bold">{detailsWorkflow.nodeCount}</div>
+                        <div className="text-xs text-muted-foreground">Nós</div>
+                      </div>
+                      <div className="p-3 bg-muted rounded-lg">
+                        <GitBranch className="w-6 h-6 mx-auto mb-2 text-green-600" />
+                        <div className="text-2xl font-bold">{detailsWorkflow.edgeCount}</div>
+                        <div className="text-xs text-muted-foreground">Conexões</div>
+                      </div>
+                      <div className="p-3 bg-muted rounded-lg">
+                        <Cpu className="w-6 h-6 mx-auto mb-2 text-purple-600" />
+                        <div className="text-2xl font-bold">{detailsWorkflow.maxDepth}</div>
+                        <div className="text-xs text-muted-foreground">Profundidade</div>
+                      </div>
+                    </div>
+
+                    {detailsWorkflow.complexityScore > 50 && (
+                      <Alert>
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertDescription>
+                          Este workflow possui alta complexidade e pode requerer mais tempo para desenvolvimento e otimização.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Capabilities Analysis */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Award className="w-5 h-5" />
+                    Capacidades e Recursos
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {(() => {
+                      try {
+                        const capabilities = typeof detailsWorkflow.capabilities === 'string' 
+                          ? JSON.parse(detailsWorkflow.capabilities) 
+                          : detailsWorkflow.capabilities || {};
+                        
+                        const capabilityItems = [
+                          { key: 'canHandleFileUpload', label: 'Upload de Arquivos', icon: FileText },
+                          { key: 'hasStreaming', label: 'Streaming', icon: Activity },
+                          { key: 'supportsMultiLanguage', label: 'Multi-idioma', icon: Network },
+                          { key: 'hasMemory', label: 'Memória', icon: Database },
+                          { key: 'usesExternalAPIs', label: 'APIs Externas', icon: Code },
+                          { key: 'hasAnalytics', label: 'Analytics', icon: BarChart3 },
+                          { key: 'supportsParallelProcessing', label: 'Processamento Paralelo', icon: Cpu },
+                          { key: 'hasErrorHandling', label: 'Tratamento de Erros', icon: Shield }
+                        ];
+
+                        return capabilityItems.map(({ key, label, icon: Icon }) => (
+                          <div key={key} className="flex items-center gap-2 p-3 border rounded-lg">
+                            {capabilities[key] ? (
+                              <div className="flex items-center gap-2 text-green-600">
+                                <CheckCircle className="w-4 h-4" />
+                                <Icon className="w-4 h-4" />
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2 text-muted-foreground">
+                                <div className="w-4 h-4 border border-gray-300 rounded" />
+                                <Icon className="w-4 h-4" />
+                              </div>
+                            )}
+                            <span className="text-sm">{label}</span>
+                          </div>
+                        ));
+                      } catch (error) {
+                        return <div className="col-span-full text-center text-muted-foreground">Erro ao carregar capacidades</div>;
+                      }
+                    })()}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Technical Details */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Timer className="w-5 h-5" />
+                    Informações Técnicas
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-3">
+                      <div className="flex justify-between">
+                        <span className="text-sm font-medium">Data de Criação</span>
+                        <span className="text-sm text-muted-foreground">
+                          {new Date(detailsWorkflow.createdAt).toLocaleDateString('pt-BR')}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm font-medium">Última Atualização</span>
+                        <span className="text-sm text-muted-foreground">
+                          {new Date(detailsWorkflow.updatedAt).toLocaleDateString('pt-BR')}
+                        </span>
+                      </div>
+                      {detailsWorkflow.lastSyncAt && (
+                        <div className="flex justify-between">
+                          <span className="text-sm font-medium">Última Sincronização</span>
+                          <span className="text-sm text-muted-foreground">
+                            {new Date(detailsWorkflow.lastSyncAt).toLocaleDateString('pt-BR')}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="space-y-3">
+                      <div className="flex justify-between">
+                        <span className="text-sm font-medium">ID do Flowise</span>
+                        <span className="text-sm text-muted-foreground font-mono">
+                          {detailsWorkflow.flowiseId}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm font-medium">ID Interno</span>
+                        <span className="text-sm text-muted-foreground font-mono">
+                          {detailsWorkflow.id}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Recommendations */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Target className="w-5 h-5" />
+                    Recomendações
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {detailsWorkflow.complexityScore > 66 && (
+                      <Alert>
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertDescription>
+                          <strong>Alta Complexidade:</strong> Considere dividir este workflow em componentes menores ou simplificar a lógica antes do desenvolvimento.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    
+                    {detailsWorkflow.nodeCount > 15 && (
+                      <Alert>
+                        <Info className="h-4 w-4" />
+                        <AlertDescription>
+                          <strong>Muitos Nós:</strong> Workflow com muitos nós pode beneficiar-se de otimização de performance e revisão de arquitetura.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    
+                    {!detailsWorkflow.deployed && (
+                      <Alert>
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertDescription>
+                          <strong>Não Deployed:</strong> Este workflow não está ativo no Flowise. Verifique se está pronto para produção antes de importar.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    
+                    {detailsWorkflow.complexityScore <= 33 && detailsWorkflow.deployed && (
+                      <Alert>
+                        <CheckCircle className="h-4 w-4" />
+                        <AlertDescription>
+                          <strong>Ótimo Candidato:</strong> Este workflow tem baixa complexidade e está deployed, ideal para desenvolvimento no Studio.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Action Buttons */}
+              <div className="flex justify-between items-center pt-4 border-t">
+                <div className="text-sm text-muted-foreground">
+                  Complexidade: {detailsWorkflow.complexityScore}/100 • 
+                  {detailsWorkflow.nodeCount} nós • 
+                  {detailsWorkflow.edgeCount} conexões
+                </div>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setIsDetailsDialogOpen(false)}
+                  >
+                    Fechar
+                  </Button>
+                  <Button 
+                    onClick={() => {
+                      handleWorkflowSelect(detailsWorkflow);
+                      setIsDetailsDialogOpen(false);
+                    }}
+                    disabled={detailsWorkflow.complexityScore > 66}
+                  >
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Selecionar para Edição
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 }
