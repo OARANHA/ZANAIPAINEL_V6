@@ -76,10 +76,11 @@ Novo sistema inteligente que resolve o problema da criação de proxies simples:
 
 #### Como Usar o Learning System
 
-1. **Acesse o Gerenciador**: `/admin/flowise-learning`
-2. **Importe Workflows**: Adicione workflows reais do Flowise para análise
-3. **Valide Templates**: Revise e aproveve os templates gerados
-4. **Use na Criação**: Utilize templates validados para criar agentes de alta qualidade
+1. **Acesse o Gerenciador**: `/admin/learning`
+2. **Clique na Aba "Flowise Learning"**: Acesse o sistema de aprendizado
+3. **Importe Workflows**: Adicione workflows reais do Flowise para análise
+4. **Valide Templates**: Revise e aproveve os templates gerados
+5. **Use na Criação**: Utilize templates validados para criar agentes de alta qualidade
 
 ### 🌐 URLs de Acesso
 
@@ -105,9 +106,11 @@ Dependendo do tipo de workflow, o sistema gera automaticamente as URLs corretas:
 - ✅ **Sincronização Completa**: Dados consistentes entre ZanAI e Flowise
 - ✅ **Segurança Aprimorada**: Rota movida para `/admin/flowise-workflows` com proteção SUPER_ADMIN
 - ✅ **Correção de Bugs**: Problemas de tipo de dados JSON resolvidos
-- ✅ **Learning System**: Sistema de aprendizado implementado e funcional
+- ✅ **Learning System**: Sistema de aprendizado unificado implementado e funcional
 - ✅ **Template Management**: Gerenciamento completo de templates aprendidos
 - ✅ **Pattern Extraction**: Extração inteligente de padrões de workflows reais
+- ✅ **Arquitetura Unificada**: Sistema integrado em `/admin/learning`
+- ✅ **Banco de Dados Limpo**: Pronto para sincronização com Flowise
 
 ### 🔧 Configuração Flowise
 
