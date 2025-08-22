@@ -95,12 +95,13 @@ export default function FlowiseLearningManager() {
   const loadWorkflows = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/v1/flowise-workflows', {
+      // Buscar workflows que foram enviados para o learning (não direto do flowise)
+      const response = await fetch('/api/v1/learning/workflows', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'get_workflows',
-          data: { page: 1, limit: 50 }
+          action: 'get_sent_workflows',
+          data: { source: 'flowise_workflows' }
         })
       });
 
@@ -118,7 +119,10 @@ export default function FlowiseLearningManager() {
           deployed: wf.deployed || false,
           isPublic: wf.isPublic || false,
           createdAt: wf.createdAt || new Date().toISOString(),
-          updatedAt: wf.updatedAt || new Date().toISOString()
+          updatedAt: wf.updatedAt || new Date().toISOString(),
+          sentToLearning: wf.sentToLearning || true,
+          analysisStatus: wf.analysisStatus || 'pending',
+          analysisResult: wf.analysisResult || null
         }));
         setWorkflows(formattedWorkflows);
       } else {
@@ -128,7 +132,7 @@ export default function FlowiseLearningManager() {
       console.error('Erro ao carregar workflows:', error);
       toast({
         title: "Erro ao carregar workflows",
-        description: "Não foi possível carregar os workflows do Flowise.",
+        description: "Não foi possível carregar os workflows enviados para o Learning.",
         variant: "destructive",
       });
     } finally {
@@ -300,6 +304,111 @@ export default function FlowiseLearningManager() {
     }
   };
 
+  const performDeepAnalysis = async (workflow: FlowiseWorkflow) => {
+    try {
+      const response = await fetch('/api/v1/learning/workflows', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'deep_analysis',
+          data: {
+            workflowId: workflow.id,
+            flowData: workflow.flowData,
+            includePerformance: true,
+            includeSecurity: true,
+            includeOptimization: true
+          }
+        })
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        toast({
+          title: "Análise detalhada concluída!",
+          description: `Análise de ${workflow.name} concluída com ${result.insights.length} insights.`,
+        });
+        await loadWorkflows(); // Refresh to show analysis status
+      } else {
+        throw new Error(result.error || 'Falha na análise detalhada');
+      }
+    } catch (error) {
+      toast({
+        title: "Erro na análise",
+        description: "Não foi possível realizar a análise detalhada.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const generateOptimizationSuggestions = async (workflow: FlowiseWorkflow) => {
+    try {
+      const response = await fetch('/api/v1/learning/workflows', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'generate_optimizations',
+          data: {
+            workflowId: workflow.id,
+            flowData: workflow.flowData,
+            currentComplexity: workflow.complexity
+          }
+        })
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        toast({
+          title: "Sugestões de otimização geradas!",
+          description: `${result.suggestions.length} sugestões geradas para ${workflow.name}.`,
+        });
+      } else {
+        throw new Error(result.error || 'Falha ao gerar sugestões');
+      }
+    } catch (error) {
+      toast({
+        title: "Erro ao gerar sugestões",
+        description: "Não foi possível gerar sugestões de otimização.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const exportToStudio = async (workflow: FlowiseWorkflow) => {
+    try {
+      const response = await fetch('/api/v1/studio/workflows', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'import_from_learning',
+          data: {
+            workflow: workflow,
+            source: 'learning'
+          }
+        })
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        toast({
+          title: "Exportado para Studio!",
+          description: `Workflow ${workflow.name} exportado para o Studio com sucesso.`,
+        });
+        // Redirecionar para o studio após exportação
+        setTimeout(() => {
+          window.location.href = '/admin/studio';
+        }, 1500);
+      } else {
+        throw new Error(result.error || 'Falha ao exportar para Studio');
+      }
+    } catch (error) {
+      toast({
+        title: "Erro ao exportar",
+        description: "Não foi possível exportar para o Studio.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const calculateComplexity = (flowData: string): number => {
     try {
       const data = JSON.parse(flowData);
@@ -377,10 +486,10 @@ export default function FlowiseLearningManager() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Database className="w-5 h-5" />
-                Workflows Disponíveis no Flowise
+                Workflows Enviados para Análise
               </CardTitle>
               <CardDescription>
-                Importe workflows reais do Flowise para análise e criação de templates
+                Workflows recebidos do flowise-workflows para análise detalhada e otimização
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -388,6 +497,20 @@ export default function FlowiseLearningManager() {
                 <div className="flex items-center justify-center py-8">
                   <RefreshCw className="w-8 h-8 animate-spin" />
                   <span className="ml-2">Carregando workflows...</span>
+                </div>
+              ) : workflows.length === 0 ? (
+                <div className="text-center py-12">
+                  <Database className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">Nenhum workflow enviado</h3>
+                  <p className="text-muted-foreground mb-4">
+                    Nenhum workflow foi enviado para análise ainda. 
+                    Envie workflows do flowise-workflows para que eles apareçam aqui.
+                  </p>
+                  <a href="/admin/flowise-workflows" className="inline-block">
+                    <Button>
+                      Ir para Flowise Workflows
+                    </Button>
+                  </a>
                 </div>
               ) : (
                 <div className="grid gap-4">
@@ -403,12 +526,40 @@ export default function FlowiseLearningManager() {
                               <Badge className={getComplexityColor(workflow.complexity)}>
                                 {getComplexityLabel(workflow.complexity)}
                               </Badge>
+                              {/* Status de Análise */}
+                              {(workflow as any).analysisStatus && (
+                                <Badge 
+                                  className={
+                                    (workflow as any).analysisStatus === 'completed' ? 'bg-green-100 text-green-800' :
+                                    (workflow as any).analysisStatus === 'analyzing' ? 'bg-yellow-100 text-yellow-800' :
+                                    'bg-gray-100 text-gray-800'
+                                  }
+                                >
+                                  {(workflow as any).analysisStatus === 'completed' ? 'Analisado' :
+                                   (workflow as any).analysisStatus === 'analyzing' ? 'Analisando' :
+                                   'Pendente'}
+                                </Badge>
+                              )}
                             </div>
-                            <div className="text-sm text-muted-foreground">
+                            <div className="text-sm text-muted-foreground mb-2">
                               {workflow.nodeCount} nodes • Complexidade: {workflow.complexity}
                             </div>
+                            {/* Mostrar resultados da análise se disponível */}
+                            {(workflow as any).analysisResult && (
+                              <div className="bg-muted p-2 rounded text-xs">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <Brain className="w-3 h-3" />
+                                  <span className="font-medium">Análise:</span>
+                                </div>
+                                <div className="space-y-1">
+                                  <div>Performance: {(workflow as any).analysisResult.performanceScore}/100</div>
+                                  <div>Segurança: {(workflow as any).analysisResult.securityScore}/100</div>
+                                  <div>Otimizações: {(workflow as any).analysisResult.optimizationCount} sugestões</div>
+                                </div>
+                              </div>
+                            )}
                           </div>
-                          <div className="flex gap-2">
+                          <div className="flex gap-2 flex-wrap">
                             <Button
                               size="sm"
                               variant="outline"
@@ -418,6 +569,29 @@ export default function FlowiseLearningManager() {
                               Detalhes
                             </Button>
                             <WorkflowVisualization workflow={workflow} />
+                            
+                            {/* Análise Detalhada */}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => performDeepAnalysis(workflow)}
+                              disabled={(workflow as any).analysisStatus === 'analyzing'}
+                            >
+                              <Brain className="w-4 h-4" />
+                              Análise
+                            </Button>
+                            
+                            {/* Otimização */}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => generateOptimizationSuggestions(workflow)}
+                            >
+                              <Target className="w-4 h-4" />
+                              Otimizar
+                            </Button>
+                            
+                            {/* Importar como Template */}
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
                                 <Button
@@ -430,46 +604,32 @@ export default function FlowiseLearningManager() {
                                   ) : (
                                     <Download className="w-4 h-4" />
                                   )}
-                                  Importar
+                                  Template
                                 </Button>
                               </AlertDialogTrigger>
                               <AlertDialogContent>
                                 <AlertDialogHeader>
-                                  <AlertDialogTitle>Confirmar Importação</AlertDialogTitle>
+                                  <AlertDialogTitle>Criar Template</AlertDialogTitle>
                                   <AlertDialogDescription>
                                     <div className="space-y-3">
-                                      <p>Você está prestes a importar o workflow <strong>{workflow.name}</strong> para o sistema de aprendizado.</p>
+                                      <p>Transformar o workflow <strong>{workflow.name}</strong> em um template aprendido?</p>
                                       
                                       <div className="bg-muted p-3 rounded-lg space-y-2 text-sm">
                                         <div className="flex items-center gap-2">
                                           <Database className="w-4 h-4" />
-                                          <span><strong>Origem:</strong> Flowise ({workflow.type})</span>
+                                          <span><strong>Origem:</strong> Flowise Workflows</span>
                                         </div>
                                         <div className="flex items-center gap-2">
                                           <Brain className="w-4 h-4" />
-                                          <span><strong>Destino:</strong> Sistema de Aprendizado (Templates)</span>
+                                          <span><strong>Destino:</strong> Templates Aprendidos</span>
                                         </div>
                                         <div className="flex items-center gap-2">
                                           <Target className="w-4 h-4" />
                                           <span><strong>Complexidade:</strong> {getComplexityLabel(workflow.complexity)}</span>
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                          <Layers className="w-4 h-4" />
-                                          <span><strong>Nodes:</strong> {workflow.nodeCount}</span>
-                                        </div>
                                       </div>
                                       
-                                      <p>Após a importação, o workflow será analisado e transformado em um template reutilizável.</p>
-                                      
-                                      <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg text-sm">
-                                        <p className="font-medium text-blue-800">O que acontecerá:</p>
-                                        <ul className="list-disc list-inside text-blue-700 mt-1 space-y-1">
-                                          <li>O workflow será analisado para extrair padrões</li>
-                                          <li>Um template será criado com base nos padrões encontrados</li>
-                                          <li>O template ficará disponível na aba "Templates Aprendidos"</li>
-                                          <li>O template precisará de validação antes de ser usado</li>
-                                        </ul>
-                                      </div>
+                                      <p>O template será criado com base na análise do workflow e ficará disponível para uso futuro.</p>
                                     </div>
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
@@ -479,18 +639,23 @@ export default function FlowiseLearningManager() {
                                     onClick={() => pendingImport && importWorkflow(pendingImport)}
                                     disabled={importing !== null}
                                   >
-                                    {importing ? (
-                                      <>
-                                        <RefreshCw className="w-4 h-4 animate-spin mr-2" />
-                                        Importando...
-                                      </>
-                                    ) : (
-                                      'Confirmar Importação'
-                                    )}
+                                    {importing ? 'Criando...' : 'Criar Template'}
                                   </AlertDialogAction>
                                 </AlertDialogFooter>
                               </AlertDialogContent>
                             </AlertDialog>
+                            
+                            {/* Exportar para Studio */}
+                            <Button
+                              size="sm"
+                              variant="default"
+                              className="bg-gradient-to-r from-green-500 to-blue-600 hover:from-green-600 hover:to-blue-700"
+                              onClick={() => exportToStudio(workflow)}
+                              disabled={(workflow as any).analysisStatus !== 'completed'}
+                            >
+                              <Upload className="w-4 h-4" />
+                              Studio
+                            </Button>
                           </div>
                         </div>
                       </CardContent>

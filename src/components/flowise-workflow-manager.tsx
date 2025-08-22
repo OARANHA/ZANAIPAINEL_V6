@@ -30,6 +30,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import EditWorkflowDialog from '@/components/EditWorkflowDialog';
+import WorkflowComplexityBadge from '@/components/workflow/WorkflowComplexityBadge';
 import { 
   RefreshCw, 
   Download, 
@@ -57,7 +58,8 @@ import {
   FileText,
   Code,
   Copy,
-  ExternalLink
+  ExternalLink,
+  Workflow
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -143,6 +145,10 @@ export default function FlowiseWorkflowManager() {
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [exportLogs, setExportLogs] = useState<any[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  
+  // Estados para o modal de visualização
+  const [visualizationWorkflow, setVisualizationWorkflow] = useState<FlowiseWorkflow | null>(null);
+  const [isVisualizationDialogOpen, setIsVisualizationDialogOpen] = useState(false);
   
   // Estados para o modal de exclusão avançado
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -308,6 +314,52 @@ export default function FlowiseWorkflowManager() {
     });
     
     console.log('Workflow selecionado:', workflow);
+  };
+
+  const handleWorkflowVisualization = (workflow: FlowiseWorkflow) => {
+    // Abrir modal com visualização do workflow
+    setVisualizationWorkflow(workflow);
+    setIsVisualizationDialogOpen(true);
+  };
+
+  const sendToLearning = async (workflow: FlowiseWorkflow) => {
+    try {
+      // Enviar workflow para o learning
+      const response = await fetch('/api/v1/learning/workflows', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'import_from_flowise',
+          data: {
+            workflow: workflow,
+            source: 'flowise_workflows'
+          }
+        })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        toast({
+          title: "Enviado para Learning",
+          description: `O workflow "${workflow.name}" foi enviado para análise no Learning.`,
+        });
+        
+        // Opcional: redirecionar para o learning
+        setTimeout(() => {
+          window.location.href = '/admin/learning';
+        }, 1500);
+      } else {
+        throw new Error(result.error || 'Falha ao enviar para Learning');
+      }
+    } catch (error) {
+      console.error('Erro ao enviar para Learning:', error);
+      toast({
+        title: "Erro ao enviar",
+        description: `Não foi possível enviar o workflow para o Learning: ${error instanceof Error ? error.message : 'Erro desconhecido'}`,
+        variant: "destructive",
+      });
+    }
   };
 
   const syncWithFlowise = async () => {
@@ -1709,11 +1761,7 @@ export default function FlowiseWorkflowManager() {
                         variant="outline"
                         onClick={(e) => {
                           e.stopPropagation();
-                          // Add visualization logic here
-                          toast({
-                            title: "Visualização",
-                            description: `Visualizando workflow "${workflow.name}"`,
-                          });
+                          handleWorkflowVisualization(workflow);
                         }}
                       >
                         <Eye className="w-4 h-4 mr-1" />
@@ -1724,72 +1772,24 @@ export default function FlowiseWorkflowManager() {
                         variant="outline"
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleWorkflowSelect(workflow);
-                        }}
-                      >
-                        <CheckCircle className="w-4 h-4 mr-1" />
-                        Selecionar
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
-                        onClick={(e) => {
-                          e.stopPropagation();
                           openEditDialog(workflow);
                         }}
                       >
                         <Edit className="w-4 h-4 mr-1" />
                         Editar
                       </Button>
-                      
-                      {/* Menu dropdown de exportação */}
-                      <div className="relative group">
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          className="flex items-center gap-1"
-                        >
-                          <Download className="w-4 h-4" />
-                          Exportar
-                        </Button>
-                        <div className="absolute right-0 mt-1 w-48 bg-background border border-border rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
-                          <div className="py-1">
-                            <button
-                              onClick={() => exportToFlowise(workflow)}
-                              disabled={exporting === workflow.id}
-                              className="w-full text-left px-4 py-2 text-sm hover:bg-muted disabled:opacity-50 flex items-center gap-2"
-                            >
-                              {exporting === workflow.id ? (
-                                <RefreshCw className="w-3 h-3 animate-spin" />
-                              ) : (
-                                <Download className="w-3 h-3" />
-                              )}
-                              {exporting === workflow.id ? 'Exportando...' : 'Para Flowise'}
-                            </button>
-                            <button
-                              onClick={() => exportWorkflowAsJSON(workflow)}
-                              className="w-full text-left px-4 py-2 text-sm hover:bg-muted flex items-center gap-2"
-                            >
-                              <FileText className="w-3 h-3" />
-                              Como JSON
-                            </button>
-                            <button
-                              onClick={() => exportWorkflowAsConfig(workflow)}
-                              className="w-full text-left px-4 py-2 text-sm hover:bg-muted flex items-center gap-2"
-                            >
-                              <Code className="w-3 h-3" />
-                              Configuração
-                            </button>
-                            <button
-                              onClick={() => copyWorkflowIdToClipboard(workflow)}
-                              className="w-full text-left px-4 py-2 text-sm hover:bg-muted flex items-center gap-2"
-                            >
-                              <Copy className="w-3 h-3" />
-                              Copiar ID
-                            </button>
-                          </div>
-                        </div>
-                      </div>
+                      <Button 
+                        size="sm" 
+                        variant="default"
+                        className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          sendToLearning(workflow);
+                        }}
+                      >
+                        <Upload className="w-4 h-4 mr-1" />
+                        Enviar para Learning
+                      </Button>
                       
                       <Button 
                         size="sm" 
@@ -1967,6 +1967,158 @@ export default function FlowiseWorkflowManager() {
           </CardContent>
         </Card>
       )}
+      
+      {/* Modal de visualização de workflow */}
+      <Dialog open={isVisualizationDialogOpen} onOpenChange={setIsVisualizationDialogOpen}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="w-5 h-5" />
+              Visualização do Workflow
+            </DialogTitle>
+            <DialogDescription>
+              Estrutura visual do workflow com nós e conexões
+            </DialogDescription>
+          </DialogHeader>
+
+          {visualizationWorkflow && (
+            <div className="space-y-6">
+              {/* Informações básicas */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      {getTypeIcon(visualizationWorkflow.type)}
+                      <h3 className="font-semibold">{visualizationWorkflow.name}</h3>
+                    </div>
+                    <Badge variant="outline">{getTypeLabel(visualizationWorkflow.type)}</Badge>
+                    <WorkflowComplexityBadge score={visualizationWorkflow.complexityScore} />
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardContent className="p-4">
+                    <h4 className="font-medium mb-2">Estatísticas</h4>
+                    <div className="space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span>Nós:</span>
+                        <span className="font-medium">{visualizationWorkflow.nodeCount}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Conexões:</span>
+                        <span className="font-medium">{visualizationWorkflow.edgeCount}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Profundidade:</span>
+                        <span className="font-medium">{visualizationWorkflow.maxDepth}</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardContent className="p-4">
+                    <h4 className="font-medium mb-2">Status</h4>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        {visualizationWorkflow.deployed ? (
+                          <CheckCircle className="w-4 h-4 text-green-600" />
+                        ) : (
+                          <div className="w-4 h-4 border-2 border-gray-300 rounded" />
+                        )}
+                        <span className="text-sm">
+                          {visualizationWorkflow.deployed ? 'Deployed' : 'Não Deployed'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {visualizationWorkflow.isPublic ? (
+                          <CheckCircle className="w-4 h-4 text-blue-600" />
+                        ) : (
+                          <div className="w-4 h-4 border-2 border-gray-300 rounded" />
+                        )}
+                        <span className="text-sm">
+                          {visualizationWorkflow.isPublic ? 'Público' : 'Privado'}
+                        </span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Canvas do Workflow */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Canvas do Workflow</CardTitle>
+                  <CardDescription>
+                    Visualização gráfica da estrutura do workflow
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="bg-muted border-2 border-dashed border-border rounded-lg h-96 flex items-center justify-center">
+                    <div className="text-center">
+                      <Workflow className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
+                      <h3 className="text-lg font-semibold mb-2">Visualização do Workflow</h3>
+                      <p className="text-muted-foreground mb-4">
+                        Esta área mostrará o canvas visual do workflow com nós e conexões
+                      </p>
+                      <div className="grid grid-cols-3 gap-4 max-w-md mx-auto text-sm">
+                        <div className="p-2 bg-background border rounded">
+                          <div className="w-3 h-3 bg-blue-500 rounded-full mx-auto mb-1"></div>
+                          <span>Nós de Entrada</span>
+                        </div>
+                        <div className="p-2 bg-background border rounded">
+                          <div className="w-3 h-3 bg-green-500 rounded-full mx-auto mb-1"></div>
+                          <span>Nós de Processamento</span>
+                        </div>
+                        <div className="p-2 bg-background border rounded">
+                          <div className="w-3 h-3 bg-purple-500 rounded-full mx-auto mb-1"></div>
+                          <span>Nós de Saída</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Descrição */}
+              {visualizationWorkflow.description && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Descrição</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-muted-foreground">{visualizationWorkflow.description}</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Ações */}
+              <div className="flex justify-between items-center pt-4 border-t">
+                <div className="text-sm text-muted-foreground">
+                  ID: {visualizationWorkflow.flowiseId}
+                </div>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setIsVisualizationDialogOpen(false)}
+                  >
+                    Fechar
+                  </Button>
+                  <Button 
+                    onClick={() => {
+                      setIsVisualizationDialogOpen(false);
+                      sendToLearning(visualizationWorkflow);
+                    }}
+                  >
+                    <Upload className="w-4 h-4 mr-2" />
+                    Enviar para Learning
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
       
       {/* Modal de edição de workflow */}
       <EditWorkflowDialog
