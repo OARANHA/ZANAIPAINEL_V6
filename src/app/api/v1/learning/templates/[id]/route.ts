@@ -4,10 +4,7 @@ import { db } from '@/lib/db';
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const template = await db.learnedTemplate.findUnique({
-      where: { id: params.id },
-      include: {
-        agent: true
-      }
+      where: { id: params.id }
     });
 
     if (!template) {

@@ -6,6 +6,17 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { 
   Download, 
   Upload, 
   RefreshCw, 
@@ -23,6 +34,7 @@ import {
   Search
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import WorkflowVisualization from '@/components/workflow/WorkflowVisualization';
 
 interface FlowiseWorkflow {
   id: string;
@@ -65,6 +77,7 @@ export default function FlowiseLearningManager() {
   const [templates, setTemplates] = useState<LearnedTemplate[]>([]);
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState<string | null>(null);
+  const [pendingImport, setPendingImport] = useState<FlowiseWorkflow | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [selectedWorkflow, setSelectedWorkflow] = useState<FlowiseWorkflow | null>(null);
   const [filters, setFilters] = useState({
@@ -82,31 +95,37 @@ export default function FlowiseLearningManager() {
   const loadWorkflows = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/flowise-external-sync', {
+      const response = await fetch('/api/v1/flowise-workflows', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'get_workflows' })
+        body: JSON.stringify({
+          action: 'get_workflows',
+          data: { page: 1, limit: 50 }
+        })
       });
 
       const result = await response.json();
       if (result.success) {
-        const externalWorkflows = result.data || [];
-        const formattedWorkflows = externalWorkflows.map((wf: any) => ({
+        const workflowsData = result.workflows || [];
+        const formattedWorkflows = workflowsData.map((wf: any) => ({
           id: wf.id,
           name: wf.name,
           type: wf.type || 'CHATFLOW',
           category: wf.category || 'general',
-          complexity: calculateComplexity(wf.flowData),
-          nodeCount: countNodes(wf.flowData),
+          complexity: wf.complexityScore || calculateComplexity(wf.flowData),
+          nodeCount: wf.nodeCount || countNodes(wf.flowData),
           flowData: wf.flowData || '{}',
           deployed: wf.deployed || false,
           isPublic: wf.isPublic || false,
-          createdAt: wf.createdDate || new Date().toISOString(),
-          updatedAt: wf.updatedDate || new Date().toISOString()
+          createdAt: wf.createdAt || new Date().toISOString(),
+          updatedAt: wf.updatedAt || new Date().toISOString()
         }));
         setWorkflows(formattedWorkflows);
+      } else {
+        throw new Error(result.error || 'Failed to load workflows');
       }
     } catch (error) {
+      console.error('Erro ao carregar workflows:', error);
       toast({
         title: "Erro ao carregar workflows",
         description: "Não foi possível carregar os workflows do Flowise.",
@@ -129,9 +148,17 @@ export default function FlowiseLearningManager() {
     }
   };
 
+  const confirmImport = (workflow: FlowiseWorkflow) => {
+    setPendingImport(workflow);
+  };
+
   const importWorkflow = async (workflow: FlowiseWorkflow) => {
     setImporting(workflow.id);
+    setPendingImport(null);
     try {
+      // Show initial feedback
+      console.log(`Iniciando importação do workflow: ${workflow.name}`);
+      
       // Analisar o workflow para extrair padrões
       const analysisResponse = await fetch('/api/v1/learning/flowise', {
         method: 'POST',
@@ -146,7 +173,7 @@ export default function FlowiseLearningManager() {
       const analysisResult = await analysisResponse.json();
       
       if (analysisResult.success) {
-        // Criar template aprendido
+        // Create template with the analysis results
         const templateResponse = await fetch('/api/v1/learning/templates', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -162,18 +189,55 @@ export default function FlowiseLearningManager() {
 
         if (templateResponse.ok) {
           const templateData = await templateResponse.json();
+          
+          // Show detailed success message
           toast({
-            title: "Workflow importado com sucesso!",
-            description: `O workflow "${workflow.name}" foi analisado e transformado em template.`,
+            title: "✅ Workflow importado com sucesso!",
+            description: (
+              <div className="space-y-2">
+                <p><strong>{workflow.name}</strong> foi analisado e transformado em template.</p>
+                <div className="text-sm text-muted-foreground">
+                  <p>• <strong>Destino:</strong> Sistema de Aprendizado (Templates)</p>
+                  <p>• <strong>Complexidade:</strong> {workflow.complexity > 10 ? 'Complexa' : workflow.complexity > 5 ? 'Média' : 'Simples'}</p>
+                  <p>• <strong>Template ID:</strong> {templateData.template?.id}</p>
+                  <p>• <strong>Status:</strong> Pronto para validação</p>
+                  <p>• <strong>Localização:</strong> Disponível na aba "Templates Aprendidos"</p>
+                </div>
+              </div>
+            ),
+            duration: 6000,
           });
+          
+          // Refresh templates list
           await loadTemplates();
+          
+          // Log the successful import
+          console.log(`Workflow "${workflow.name}" importado com sucesso. Template ID: ${templateData.template?.id}`);
+        } else {
+          throw new Error('Falha ao criar template');
         }
+      } else {
+        throw new Error(analysisResult.error || 'Falha na análise do workflow');
       }
     } catch (error) {
+      console.error('Erro ao importar workflow:', error);
+      
+      // Show detailed error message
       toast({
-        title: "Erro ao importar workflow",
-        description: `Não foi possível importar o workflow "${workflow.name}".`,
+        title: "❌ Erro ao importar workflow",
+        description: (
+          <div className="space-y-2">
+            <p>Não foi possível importar o workflow <strong>{workflow.name}</strong>.</p>
+            <div className="text-sm text-muted-foreground">
+              <p>• <strong>Erro:</strong> {error instanceof Error ? error.message : 'Erro desconhecido'}</p>
+              <p>• <strong>Destino pretendido:</strong> Sistema de Aprendizado</p>
+              <p>• <strong>Solução:</strong> Verifique se o workflow possui dados válidos</p>
+              <p>• <strong>Ação:</strong> Tente novamente ou contate o suporte</p>
+            </div>
+          </div>
+        ),
         variant: "destructive",
+        duration: 8000,
       });
     } finally {
       setImporting(null);
@@ -351,19 +415,82 @@ export default function FlowiseLearningManager() {
                               onClick={() => setSelectedWorkflow(workflow)}
                             >
                               <Eye className="w-4 h-4" />
+                              Detalhes
                             </Button>
-                            <Button
-                              size="sm"
-                              onClick={() => importWorkflow(workflow)}
-                              disabled={importing === workflow.id}
-                            >
-                              {importing === workflow.id ? (
-                                <RefreshCw className="w-4 h-4 animate-spin" />
-                              ) : (
-                                <Download className="w-4 h-4" />
-                              )}
-                              Importar
-                            </Button>
+                            <WorkflowVisualization workflow={workflow} />
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  onClick={() => confirmImport(workflow)}
+                                  disabled={importing === workflow.id}
+                                >
+                                  {importing === workflow.id ? (
+                                    <RefreshCw className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Download className="w-4 h-4" />
+                                  )}
+                                  Importar
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Confirmar Importação</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    <div className="space-y-3">
+                                      <p>Você está prestes a importar o workflow <strong>{workflow.name}</strong> para o sistema de aprendizado.</p>
+                                      
+                                      <div className="bg-muted p-3 rounded-lg space-y-2 text-sm">
+                                        <div className="flex items-center gap-2">
+                                          <Database className="w-4 h-4" />
+                                          <span><strong>Origem:</strong> Flowise ({workflow.type})</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <Brain className="w-4 h-4" />
+                                          <span><strong>Destino:</strong> Sistema de Aprendizado (Templates)</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <Target className="w-4 h-4" />
+                                          <span><strong>Complexidade:</strong> {getComplexityLabel(workflow.complexity)}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <Layers className="w-4 h-4" />
+                                          <span><strong>Nodes:</strong> {workflow.nodeCount}</span>
+                                        </div>
+                                      </div>
+                                      
+                                      <p>Após a importação, o workflow será analisado e transformado em um template reutilizável.</p>
+                                      
+                                      <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg text-sm">
+                                        <p className="font-medium text-blue-800">O que acontecerá:</p>
+                                        <ul className="list-disc list-inside text-blue-700 mt-1 space-y-1">
+                                          <li>O workflow será analisado para extrair padrões</li>
+                                          <li>Um template será criado com base nos padrões encontrados</li>
+                                          <li>O template ficará disponível na aba "Templates Aprendidos"</li>
+                                          <li>O template precisará de validação antes de ser usado</li>
+                                        </ul>
+                                      </div>
+                                    </div>
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                  <AlertDialogAction 
+                                    onClick={() => pendingImport && importWorkflow(pendingImport)}
+                                    disabled={importing !== null}
+                                  >
+                                    {importing ? (
+                                      <>
+                                        <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+                                        Importando...
+                                      </>
+                                    ) : (
+                                      'Confirmar Importação'
+                                    )}
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                           </div>
                         </div>
                       </CardContent>

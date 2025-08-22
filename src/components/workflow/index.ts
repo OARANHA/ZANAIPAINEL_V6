@@ -1,5 +1,5 @@
 export { WorkflowComplexityIndicator } from './WorkflowComplexityIndicator';
-export { WorkflowVisualization } from './WorkflowVisualization';
+export { WorkflowVisualization } from './WorkflowVisualizationExports';
 export { WorkflowCard } from './WorkflowCard';
 
 export type {

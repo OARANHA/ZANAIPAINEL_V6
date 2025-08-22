@@ -43,6 +43,7 @@ import ElegantCard from '@/components/ui/ElegantCard';
 import FlowiseLearningManager from '@/components/FlowiseLearningManager';
 import HybridWorkflowEditor from '@/components/workflow/HybridWorkflowEditor';
 import WorkflowComplexityBadge from '@/components/workflow/WorkflowComplexityBadge';
+import WorkflowVisualization from '@/components/workflow/WorkflowVisualization';
 
 interface FlowiseWorkflow {
   id: string;
@@ -168,8 +169,24 @@ export default function LearningPage() {
   };
 
   const handleWorkflowSelect = (workflow: FlowiseWorkflow) => {
+    // Validate workflow before selection
+    if (!workflow.id || !workflow.name || !workflow.flowData) {
+      alert('Workflow inválido: dados incompletos');
+      return;
+    }
+    
+    if (workflow.complexityScore > 50) {
+      const confirmSelect = confirm(
+        `Este workflow tem alta complexidade (${workflow.complexityScore}). Deseja continuar com a edição?`
+      );
+      if (!confirmSelect) return;
+    }
+    
     setSelectedWorkflow(workflow);
     setIsWorkflowDialogOpen(false);
+    
+    // Show success message
+    console.log('Workflow selecionado com sucesso:', workflow.name);
   };
 
   const handleWorkflowSave = async (updatedWorkflow: FlowiseWorkflow) => {
@@ -192,28 +209,88 @@ export default function LearningPage() {
   const handleExportToStudio = async () => {
     if (!selectedWorkflow) return;
     
+    // Validate workflow before export
+    if (!selectedWorkflow.flowData || selectedWorkflow.flowData === '{}') {
+      alert('Não é possível exportar: workflow não possui dados válidos');
+      return;
+    }
+    
+    if (selectedWorkflow.nodeCount === 0) {
+      alert('Não é possível exportar: workflow não possui nós');
+      return;
+    }
+    
     try {
-      // Simulate export to studio
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Real export to studio
+      const response = await fetch('/api/v1/studio/workflows', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'import_workflow',
+          data: {
+            workflow: selectedWorkflow,
+            source: 'flowise_learning'
+          }
+        })
+      });
+
+      const result = await response.json();
       
-      console.log('Workflow exportado para o studio:', selectedWorkflow.name);
-      alert(`Workflow "${selectedWorkflow.name}" exportado para o Studio com sucesso!`);
+      if (result.success) {
+        console.log('Workflow exportado para o studio:', selectedWorkflow.name);
+        alert(`Workflow "${selectedWorkflow.name}" exportado para o Studio com sucesso!`);
+      } else {
+        throw new Error(result.error || 'Export failed');
+      }
     } catch (error) {
       console.error('Erro ao exportar workflow:', error);
+      alert(`Erro ao exportar workflow: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     }
   };
 
   const handlePublishToAgents = async () => {
     if (!selectedWorkflow) return;
     
+    // Validate workflow before publishing
+    if (!selectedWorkflow.flowData || selectedWorkflow.flowData === '{}') {
+      alert('Não é possível publicar: workflow não possui dados válidos');
+      return;
+    }
+    
+    if (selectedWorkflow.nodeCount === 0) {
+      alert('Não é possível publicar: workflow não possui nós');
+      return;
+    }
+    
+    if (!selectedWorkflow.deployed) {
+      const confirmPublish = confirm(
+        'Este workflow não está deployed no Flowise. Deseja publicar mesmo assim?'
+      );
+      if (!confirmPublish) return;
+    }
+    
     try {
-      // Simulate publishing to agents
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Real publish to agents
+      const response = await fetch('/api/v1/agents/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workflow: selectedWorkflow,
+          source: 'flowise_learning'
+        })
+      });
+
+      const result = await response.json();
       
-      console.log('Workflow publicado para agentes:', selectedWorkflow.name);
-      alert(`Workflow "${selectedWorkflow.name}" publicado para agentes com sucesso!`);
+      if (result.success) {
+        console.log('Workflow publicado para agentes:', selectedWorkflow.name);
+        alert(`Workflow "${selectedWorkflow.name}" publicado para agentes com sucesso!\n${result.message || ''}`);
+      } else {
+        throw new Error(result.error || 'Publish failed');
+      }
     } catch (error) {
       console.error('Erro ao publicar workflow:', error);
+      alert(`Erro ao publicar workflow: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     }
   };
 
@@ -365,9 +442,12 @@ export default function LearningPage() {
                                   )}
                                 </div>
                               </div>
-                              <Button size="sm" variant="outline">
-                                Selecionar
-                              </Button>
+                              <div className="flex gap-2">
+                                <WorkflowVisualization workflow={workflow} />
+                                <Button size="sm" variant="outline">
+                                  Selecionar
+                                </Button>
+                              </div>
                             </div>
                           </CardContent>
                         </Card>

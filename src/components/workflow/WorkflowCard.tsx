@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { WorkflowVisualization } from './WorkflowVisualization';
+import { WorkflowVisualization } from '.';
 import { WorkflowComplexityIndicator } from './WorkflowComplexityIndicator';
 import { 
   Settings, 
@@ -229,12 +229,21 @@ export function WorkflowCard({
       {/* Visualização do Workflow (Modal) */}
       {isVisualizationOpen && (
         <WorkflowVisualization
-          nodes={workflow.nodes}
-          config={workflow.config}
-          complexity={workflow.complexity}
-          onNodeClick={handleNodeClick}
-          onEditWorkflow={handleEditWorkflow}
-          className="z-50"
+          workflow={{
+            id: agent.id,
+            name: workflow.config.workflowName,
+            type: agent.type || 'AGENTFLOW',
+            flowData: JSON.stringify({
+              nodes: workflow.nodes,
+              edges: [], // TODO: Generate edges based on node connections
+              viewport: { x: 0, y: 0, zoom: 1 }
+            }),
+            nodeCount: workflow.nodes.length,
+            edgeCount: 0, // TODO: Calculate actual edge count
+            complexityScore: workflow.complexity === 'simple' ? 3 : 
+                           workflow.complexity === 'medium' ? 8 : 15,
+            deployed: agent.exportedToFlowise || false
+          }}
         />
       )}
     </div>

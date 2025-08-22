@@ -1,283 +1,175 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useEffect } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { 
-  ArrowRight, 
-  Settings, 
-  Play, 
-  Maximize2,
-  Info,
-  GitBranch,
-  Database,
-  Cpu,
-  MessageSquare,
-  FileText,
-  Search
+  Eye, 
+  Maximize2, 
+  Minimize2, 
+  Layers, 
+  Zap, 
+  Target,
+  AlertTriangle,
+  CheckCircle,
+  RefreshCw
 } from 'lucide-react';
-
-interface FlowiseNode {
-  path: string;
-  label: string;
-  desc: string;
-  categoria: string;
-  inputs: string | string[];
-  outputs: string | string[];
-}
-
-interface WorkflowConfig {
-  workflowName: string;
-  workflowDescription: string;
-  autoConnect: boolean;
-  optimizeLayout: boolean;
-  includeMemory: boolean;
-  includeTools: boolean;
-}
+import ReactFlowCanvas from './ReactFlowCanvas';
 
 interface WorkflowVisualizationProps {
-  nodes: FlowiseNode[];
-  config: WorkflowConfig;
-  complexity: 'simple' | 'medium' | 'complex';
-  onNodeClick?: (node: FlowiseNode) => void;
-  onEditWorkflow?: () => void;
-  className?: string;
+  workflow: {
+    id: string;
+    name: string;
+    type: string;
+    flowData: string;
+    nodeCount: number;
+    edgeCount: number;
+    complexityScore: number;
+    deployed: boolean;
+  };
 }
 
-export function WorkflowVisualization({
-  nodes,
-  config,
-  complexity,
-  onNodeClick,
-  onEditWorkflow,
-  className = ''
-}: WorkflowVisualizationProps) {
-  const [selectedNode, setSelectedNode] = useState<FlowiseNode | null>(null);
-  const [isExpanded, setIsExpanded] = useState(false);
+export default function WorkflowVisualization({ workflow }: WorkflowVisualizationProps) {
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasValidData, setHasValidData] = useState(false);
 
-  const getNodeIcon = (categoria: string) => {
-    switch (categoria) {
-      case 'LLM': return <Cpu className="h-5 w-5" />;
-      case 'Memory': return <Database className="h-5 w-5" />;
-      case 'Tools': return <Settings className="h-5 w-5" />;
-      case 'Document Loaders': return <FileText className="h-5 w-5" />;
-      case 'Text Splitters': return <FileText className="h-5 w-5" />;
-      case 'Embeddings': return <Search className="h-5 w-5" />;
-      case 'Vector Stores': return <Database className="h-5 w-5" />;
-      case 'Retrievers': return <Search className="h-5 w-5" />;
-      case 'Prompt Templates': return <MessageSquare className="h-5 w-5" />;
-      default: return <GitBranch className="h-5 w-5" />;
-    }
-  };
+  useEffect(() => {
+    console.log('🎯 WorkflowVisualization rendered with:', {
+      id: workflow.id,
+      name: workflow.name,
+      type: workflow.type,
+      flowDataLength: workflow.flowData?.length || 0,
+      flowDataPreview: workflow.flowData?.substring(0, 100) + '...',
+      nodeCount: workflow.nodeCount,
+      edgeCount: workflow.edgeCount,
+      complexityScore: workflow.complexityScore,
+      deployed: workflow.deployed
+    });
 
-  const getNodeColor = (categoria: string) => {
-    switch (categoria) {
-      case 'LLM': return 'bg-blue-100 border-blue-300 text-blue-800';
-      case 'Memory': return 'bg-green-100 border-green-300 text-green-800';
-      case 'Tools': return 'bg-purple-100 border-purple-300 text-purple-800';
-      case 'Document Loaders': return 'bg-orange-100 border-orange-300 text-orange-800';
-      case 'Text Splitters': return 'bg-yellow-100 border-yellow-300 text-yellow-800';
-      case 'Embeddings': return 'bg-pink-100 border-pink-300 text-pink-800';
-      case 'Vector Stores': return 'bg-indigo-100 border-indigo-300 text-indigo-800';
-      case 'Retrievers': return 'bg-teal-100 border-teal-300 text-teal-800';
-      case 'Prompt Templates': return 'bg-cyan-100 border-cyan-300 text-cyan-800';
-      default: return 'bg-gray-100 border-gray-300 text-gray-800';
-    }
-  };
+    // Check if workflow has valid data
+    const hasData = workflow.flowData && 
+                   workflow.flowData !== '{}' && 
+                   workflow.flowData !== 'null' && 
+                   workflow.flowData !== 'undefined' &&
+                   workflow.flowData.trim() !== '';
+    
+    setHasValidData(hasData);
+    setIsLoading(false);
+  }, [workflow]);
 
-  const handleNodeClick = (node: FlowiseNode) => {
-    setSelectedNode(node);
-    onNodeClick?.(node);
-  };
+  const VisualizationContent = () => (
+    <div className="space-y-4">
+      {/* Workflow Info */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold">{workflow.name}</h3>
+          <div className="flex items-center gap-2 mt-1">
+            <Badge variant="outline">{workflow.type}</Badge>
+            <Badge variant={workflow.deployed ? "default" : "secondary"}>
+              {workflow.deployed ? "Deployed" : "Not Deployed"}
+            </Badge>
+            <Badge 
+              className={
+                workflow.complexityScore > 20 ? "bg-red-100 text-red-800" :
+                workflow.complexityScore > 10 ? "bg-yellow-100 text-yellow-800" :
+                "bg-green-100 text-green-800"
+              }
+            >
+              Complexidade: {workflow.complexityScore}
+            </Badge>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button 
+            size="sm" 
+            variant="outline"
+            onClick={() => setIsFullscreen(!isFullscreen)}
+          >
+            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+          </Button>
+        </div>
+      </div>
+
+      {/* Visualization Area */}
+      <div className="border rounded-lg overflow-hidden bg-gray-50">
+        {isLoading ? (
+          <div className="flex items-center justify-center h-96">
+            <RefreshCw className="w-8 h-8 animate-spin text-muted-foreground" />
+            <span className="ml-2">Carregando visualização...</span>
+          </div>
+        ) : !hasValidData ? (
+          <div className="flex items-center justify-center h-96 text-muted-foreground">
+            <div className="text-center">
+              <AlertTriangle className="w-12 h-12 mx-auto mb-2" />
+              <p className="font-medium mb-2">Nenhum dado de visualização encontrado</p>
+              <p className="text-sm">O workflow pode não possuir dados estruturais válidos.</p>
+              <p className="text-xs mt-1">ID: {workflow.id}</p>
+              <p className="text-xs">Tipo: {workflow.type}</p>
+              <p className="text-xs">Dados: {workflow.flowData?.substring(0, 50) || 'vazio'}</p>
+            </div>
+          </div>
+        ) : (
+          <div className="h-96">
+            <ReactFlowCanvas
+              workflow={workflow}
+              className="w-full h-full"
+              onNodeClick={(node) => {
+                console.log('Node clicked:', node);
+              }}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="text-center p-3 bg-blue-50 rounded-lg">
+          <div className="text-2xl font-bold text-blue-600">{workflow.nodeCount}</div>
+          <div className="text-sm text-blue-800">Nós</div>
+        </div>
+        <div className="text-center p-3 bg-green-50 rounded-lg">
+          <div className="text-2xl font-bold text-green-600">{workflow.edgeCount}</div>
+          <div className="text-sm text-green-800">Conexões</div>
+        </div>
+        <div className="text-center p-3 bg-purple-50 rounded-lg">
+          <div className="text-2xl font-bold text-purple-600">{workflow.complexityScore}</div>
+          <div className="text-sm text-purple-800">Complexidade</div>
+        </div>
+        <div className="text-center p-3 bg-orange-50 rounded-lg">
+          <div className="text-2xl font-bold text-orange-600">{workflow.type}</div>
+          <div className="text-sm text-orange-800">Tipo</div>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
-    <Card className={`${className} ${isExpanded ? 'fixed inset-4 z-50 m-0' : ''}`}>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <GitBranch className="h-5 w-5" />
+    <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline">
+          <Eye className="w-4 h-4" />
+          Visualizar
+        </Button>
+      </DialogTrigger>
+      <DialogContent className={`max-w-6xl ${isFullscreen ? 'max-h-[90vh]' : ''}`}>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Layers className="w-5 h-5" />
             Visualização do Workflow
-          </CardTitle>
-          <div className="flex items-center gap-2">
-            <Badge 
-              variant={complexity === 'simple' ? 'default' : complexity === 'medium' ? 'secondary' : 'destructive'}
-            >
-              {complexity === 'simple' ? 'Simples' : complexity === 'medium' ? 'Médio' : 'Complexo'}
-            </Badge>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsExpanded(!isExpanded)}
-            >
-              <Maximize2 className="h-4 w-4" />
-            </Button>
-            {onEditWorkflow && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onEditWorkflow}
-              >
-                <Settings className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          {config.workflowName}
-        </p>
-      </CardHeader>
-
-      <CardContent className="space-y-4">
-        {/* Descrição do Workflow */}
-        <div className="p-3 bg-muted rounded-lg">
-          <p className="text-sm text-muted-foreground">
-            {config.workflowDescription}
-          </p>
-        </div>
-
-        {/* Visualização do Fluxo */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h4 className="font-medium text-sm">Fluxo do Workflow</h4>
-            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-              <Info className="h-3 w-3" />
-              {nodes.length} nodes
-            </div>
-          </div>
-
-          <div className="relative">
-            {/* Linha de conexão */}
-            <div className="absolute left-4 top-8 bottom-8 w-0.5 bg-border"></div>
-            
-            {/* Nodes */}
-            <div className="space-y-4">
-              {/* Node Inicial */}
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-primary-foreground text-sm font-medium">
-                  1
-                </div>
-                <div className="flex-1">
-                  <div className="text-sm font-medium">Início</div>
-                  <div className="text-xs text-muted-foreground">Ponto de entrada</div>
-                </div>
-              </div>
-
-              {/* Nodes Configurados */}
-              {nodes.map((node, index) => (
-                <div key={node.path} className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-secondary rounded-full flex items-center justify-center text-secondary-foreground text-sm font-medium">
-                    {index + 2}
-                  </div>
-                  <div 
-                    className={`flex-1 p-3 rounded-lg border cursor-pointer transition-colors hover:bg-muted/50 ${getNodeColor(node.categoria)}`}
-                    onClick={() => handleNodeClick(node)}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      {getNodeIcon(node.categoria)}
-                      <div className="text-sm font-medium">{node.label}</div>
-                      <Badge variant="outline" className="text-xs">
-                        {node.categoria}
-                      </Badge>
-                    </div>
-                    <div className="text-xs opacity-75">{node.desc}</div>
-                    
-                    {/* Inputs e Outputs */}
-                    <div className="flex gap-2 mt-2">
-                      {node.inputs && (
-                        <div className="text-xs">
-                          <span className="font-medium">Inputs:</span> {
-                            Array.isArray(node.inputs) 
-                              ? (node.inputs.length > 0 ? node.inputs.join(', ') : 'Nenhum')
-                              : node.inputs
-                          }
-                        </div>
-                      )}
-                      {node.outputs && (
-                        <div className="text-xs">
-                          <span className="font-medium">Outputs:</span> {
-                            Array.isArray(node.outputs) 
-                              ? (node.outputs.length > 0 ? node.outputs.join(', ') : 'Nenhum')
-                              : node.outputs
-                          }
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              {/* Node Final */}
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-muted rounded-full flex items-center justify-center text-muted-foreground text-sm font-medium">
-                  {nodes.length + 2}
-                </div>
-                <div className="flex-1">
-                  <div className="text-sm font-medium">Fim</div>
-                  <div className="text-xs text-muted-foreground">Ponto de saída</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Detalhes do Node Selecionado */}
-        {selectedNode && (
-          <Card className="bg-muted/50">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="font-medium flex items-center gap-2">
-                  {getNodeIcon(selectedNode.categoria)}
-                  {selectedNode.label}
-                </h4>
-                <Badge variant="outline">{selectedNode.categoria}</Badge>
-              </div>
-              <p className="text-sm text-muted-foreground mb-3">
-                {selectedNode.desc}
-              </p>
-              
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <div className="font-medium mb-1">Inputs</div>
-                  <div className="text-muted-foreground">
-                    {Array.isArray(selectedNode.inputs) && selectedNode.inputs.length > 0 
-                      ? selectedNode.inputs.join(', ') 
-                      : selectedNode.inputs || 'Nenhum'}
-                  </div>
-                </div>
-                <div>
-                  <div className="font-medium mb-1">Outputs</div>
-                  <div className="text-muted-foreground">
-                    {Array.isArray(selectedNode.outputs) && selectedNode.outputs.length > 0 
-                      ? selectedNode.outputs.join(', ') 
-                      : selectedNode.outputs || 'Nenhum'}
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Ações */}
-        <div className="flex gap-2 pt-2">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={onEditWorkflow}
-            className="flex items-center gap-2"
-          >
-            <Settings className="h-4 w-4" />
-            Editar Configuração
-          </Button>
-          <Button 
-            size="sm" 
-            className="flex items-center gap-2"
-          >
-            <Play className="h-4 w-4" />
-            Executar Workflow
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+          </DialogTitle>
+          <DialogDescription>
+            Visualização estrutural do workflow {workflow.name}
+          </DialogDescription>
+        </DialogHeader>
+        <VisualizationContent />
+      </DialogContent>
+    </Dialog>
   );
 }
+
+// Create a proper named export by re-exporting the default
+const WorkflowVisualizationNamed = WorkflowVisualization;
+export { WorkflowVisualizationNamed as WorkflowVisualization };

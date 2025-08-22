@@ -14,10 +14,7 @@ export async function GET(request: NextRequest) {
 
     const templates = await db.learnedTemplate.findMany({
       where,
-      orderBy: { updatedAt: 'desc' },
-      include: {
-        agent: true
-      }
+      orderBy: { updatedAt: 'desc' }
     });
 
     return NextResponse.json({
