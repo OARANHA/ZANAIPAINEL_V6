@@ -8,8 +8,6 @@ import {
   Background, 
   useNodesState, 
   useEdgesState,
-  addEdge,
-  Connection,
   Edge,
   Node,
   NodeTypes,
@@ -24,13 +22,11 @@ import {
   ZoomIn, 
   ZoomOut, 
   Maximize, 
-  Move, 
-  Settings, 
   Save,
   Play,
   Eye,
   Edit,
-  RefreshCw,
+  Settings,
   Bot,
   Cpu,
   GitBranch,
@@ -75,7 +71,7 @@ interface ReactFlowCanvasProps {
   className?: string;
 }
 
-// Custom Node Component
+// Custom Node Component - Simplified and Professional
 const CustomNode = ({ data, selected }: { data: any; selected: boolean }) => {
   const getNodeColor = (type: string): string => {
     const colors: { [key: string]: string } = {
@@ -98,8 +94,8 @@ const CustomNode = ({ data, selected }: { data: any; selected: boolean }) => {
       'Agent': <Bot className="w-4 h-4" />,
       'Condition': <GitBranch className="w-4 h-4" />,
       'LLM': <Cpu className="w-4 h-4" />,
-      'Loop': <RefreshCw className="w-4 h-4" />,
-      'Tool': <Settings className="w-4 h-4" />,
+      'Loop': <AlertTriangle className="w-4 h-4" />,
+      'Tool': <Database className="w-4 h-4" />,
       'Document': <Database className="w-4 h-4" />,
       'Memory': <MemoryStick className="w-4 h-4" />,
       'API': <Globe className="w-4 h-4" />,
@@ -111,8 +107,8 @@ const CustomNode = ({ data, selected }: { data: any; selected: boolean }) => {
   
   return (
     <div 
-      className={`px-4 py-3 shadow-lg rounded-lg border-2 bg-white min-w-[150px] transition-all duration-200 ${
-        selected ? 'ring-2 ring-blue-500 shadow-xl' : 'hover:shadow-xl'
+      className={`px-4 py-3 shadow-md rounded-lg border-2 bg-white min-w-[140px] transition-all duration-200 ${
+        selected ? 'ring-2 ring-blue-500 shadow-lg' : 'hover:shadow-lg'
       }`}
       style={{ borderColor: nodeColor }}
     >
@@ -153,13 +149,13 @@ const CustomNode = ({ data, selected }: { data: any; selected: boolean }) => {
         </Button>
       </div>
       
-      {/* Connection handles */}
+      {/* Simple connection handles */}
       <div 
-        className="absolute -left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 bg-blue-500 rounded-full border-2 border-white"
+        className="absolute -left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 bg-blue-500 rounded-full border-2 border-white"
         style={{ display: data.type === 'Start' ? 'none' : 'block' }}
       />
       <div 
-        className="absolute -right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 bg-blue-500 rounded-full border-2 border-white"
+        className="absolute -right-2 top-1/2 transform -translate-y-1/2 w-3 h-3 bg-blue-500 rounded-full border-2 border-white"
         style={{ display: data.type === 'Generate Final Answer' ? 'none' : 'block' }}
       />
     </div>
@@ -203,15 +199,17 @@ export default function ReactFlowCanvas({
         },
         sourcePosition: Position.Right,
         targetPosition: Position.Left,
+        // Disable dragging for now - can be enabled later
+        draggable: false,
       }));
 
-      // Convert edges to ReactFlow format
+      // Convert edges to ReactFlow format - simple and clean
       const reactFlowEdges: Edge[] = workflowEdges.map((edge: WorkflowEdge, index: number) => ({
         id: `edge-${index}`,
         source: edge.source,
         target: edge.target,
         type: 'smoothstep',
-        animated: true,
+        animated: false, // Disabled for cleaner look
         style: { 
           stroke: '#94a3b8', 
           strokeWidth: 2 
@@ -220,6 +218,9 @@ export default function ReactFlowCanvas({
           type: MarkerType.ArrowClosed,
           color: '#64748b',
         },
+        // Disable edge editing for now
+        selectable: false,
+        updatable: false,
       }));
 
       setNodes(reactFlowNodes);
@@ -241,69 +242,14 @@ export default function ReactFlowCanvas({
     onNodeClick?.(workflowNode);
   }, [onNodeClick]);
 
-  // Handle connection
-  const onConnect = useCallback(
-    (params: Connection) => {
-      const newEdge = {
-        ...params,
-        id: `edge-${Date.now()}`,
-        type: 'smoothstep',
-        animated: true,
-        style: { 
-          stroke: '#94a3b8', 
-          strokeWidth: 2 
-        },
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          color: '#64748b',
-        },
-      };
-      setEdges((eds) => addEdge(newEdge, eds));
-    },
-    [setEdges]
-  );
-
-  // Handle drag over
-  const onDragOver = useCallback((event: React.DragEvent) => {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = 'move';
+  // Initialize ReactFlow instance
+  const onInit = useCallback((instance: any) => {
+    setReactFlowInstance(instance);
+    // Fit view to show all nodes
+    setTimeout(() => {
+      instance.fitView();
+    }, 100);
   }, []);
-
-  // Handle drop
-  const onDrop = useCallback(
-    (event: React.DragEvent) => {
-      event.preventDefault();
-
-      if (!reactFlowWrapper.current || !reactFlowInstance) return;
-
-      const reactFlowBounds = reactFlowWrapper.current.getBoundingClientRect();
-      const type = event.dataTransfer.getData('application/reactflow');
-
-      if (typeof type === 'undefined' || !type) return;
-
-      const position = reactFlowInstance.screenToFlowPosition({
-        x: event.clientX - reactFlowBounds.left,
-        y: event.clientY - reactFlowBounds.top,
-      });
-
-      const newNode: Node = {
-        id: `node-${Date.now()}`,
-        type: 'custom',
-        position,
-        data: {
-          label: `${type} Node`,
-          type: type,
-          category: 'General',
-          onEdit: () => {},
-        },
-        sourcePosition: Position.Right,
-        targetPosition: Position.Left,
-      };
-
-      setNodes((nds) => nds.concat(newNode));
-    },
-    [reactFlowInstance, setNodes]
-  );
 
   // Fit view to screen
   const fitView = () => {
@@ -403,12 +349,14 @@ export default function ReactFlowCanvas({
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onNodeClick={onNodeClickHandler}
-            onConnect={onConnect}
-            onInit={setReactFlowInstance}
-            onDrop={onDrop}
-            onDragOver={onDragOver}
+            onInit={onInit}
             nodeTypes={nodeTypes}
             fitView
+            // Disable advanced features for now
+            nodesDraggable={false}
+            nodesConnectable={false}
+            edgesUpdatable={false}
+            elementsSelectable={false}
             attributionPosition="bottom-left"
           >
             <Controls />
@@ -422,6 +370,8 @@ export default function ReactFlowCanvas({
                 return '#fff';
               }}
               nodeBorderRadius={2}
+              zoomable={false}
+              pannable={false}
             />
             <Background 
               color="#aaa" 
@@ -431,10 +381,10 @@ export default function ReactFlowCanvas({
           </ReactFlow>
         </div>
         
-        {/* Instructions overlay */}
+        {/* Simple instructions overlay */}
         <div className="absolute bottom-4 left-4 bg-black/70 text-white text-xs px-3 py-2 rounded-lg">
-          <div>🖱️ Arraste para pan • Scroll para zoom • Clique nos nós para selecionar</div>
-          <div>✏️ Clique em "Editar" para configurar o conteúdo de cada nó</div>
+          <div>🖱️ Use scroll para zoom • Clique nos nós para selecionar</div>
+          <div>✏️ Clique em "Editar" para configurar o conteúdo</div>
         </div>
       </CardContent>
     </Card>
