@@ -443,8 +443,17 @@ export default function LearningPage() {
                                 </div>
                               </div>
                               <div className="flex gap-2">
-                                <WorkflowVisualization workflow={workflow} />
-                                <Button size="sm" variant="outline">
+                                <div onClick={(e) => e.stopPropagation()}>
+                                  <WorkflowVisualization workflow={workflow} />
+                                </div>
+                                <Button 
+                                  size="sm" 
+                                  variant="outline"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleWorkflowSelect(workflow);
+                                  }}
+                                >
                                   Selecionar
                                 </Button>
                               </div>

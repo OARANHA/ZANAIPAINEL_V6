@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { transformAgentToFlowiseWorkflow } from '@/lib/agent-to-flowise-transformer';
+import { createFlowiseClient, defaultFlowiseConfig } from '@/lib/flowise-client';
 
 // Interface para dados do workflow Flowise
 interface FlowiseWorkflow {
@@ -287,7 +288,7 @@ async function analyzeComplexity({ flowData }: { flowData: string }) {
 }
 
 // Obter workflows registrados e agentes disponíveis para exportação
-async function getWorkflows({ filters = {}, page = 1, limit = 20, includeAgents = true }) {
+async function getWorkflows({ filters = {}, page = 1, limit = 20, includeAgents = true, includeExternal = true }) {
   try {
     const where: any = {};
     
@@ -297,7 +298,7 @@ async function getWorkflows({ filters = {}, page = 1, limit = 20, includeAgents 
     if (filters.minComplexity) where.complexityScore = { gte: filters.minComplexity };
     if (filters.maxComplexity) where.complexityScore = { lte: filters.maxComplexity };
 
-    // Buscar workflows Flowise existentes
+    // Buscar workflows Flowise existentes no banco local
     const [flowiseWorkflows, flowiseTotal] = await Promise.all([
       db.flowiseWorkflow.findMany({
         where,
@@ -310,6 +311,60 @@ async function getWorkflows({ filters = {}, page = 1, limit = 20, includeAgents 
 
     let allWorkflows = [...flowiseWorkflows];
     let agents: any[] = [];
+    
+    // Se não houver workflows locais e includeExternal for true, buscar do Flowise externo
+    if (includeExternal && flowiseWorkflows.length === 0) {
+      try {
+        console.log('🔄 Buscando workflows do Flowise externo...');
+        const flowiseClient = createFlowiseClient(defaultFlowiseConfig);
+        const externalWorkflows = await flowiseClient.getChatflows({ 
+          page, 
+          limit: limit * 2 // Buscar mais para ter opções
+        });
+        
+        if (externalWorkflows.data && externalWorkflows.data.length > 0) {
+          // Transformar workflows externos no formato esperado
+          const formattedExternalWorkflows = externalWorkflows.data.map((wf: any) => ({
+            id: wf.id,
+            name: wf.name,
+            description: wf.description || `Workflow do tipo ${wf.type}`,
+            type: wf.type || 'CHATFLOW',
+            flowData: wf.flowData || '{}',
+            deployed: wf.deployed || false,
+            isPublic: wf.isPublic || false,
+            category: wf.category || 'general',
+            workspaceId: wf.workspaceId || null,
+            createdAt: wf.createdDate || new Date(),
+            updatedAt: wf.updatedDate || new Date(),
+            
+            // Análise de complexidade
+            complexityScore: analyzeWorkflowComplexity(wf.flowData || '{}').complexityScore,
+            nodeCount: analyzeWorkflowComplexity(wf.flowData || '{}').nodeCount,
+            edgeCount: analyzeWorkflowComplexity(wf.flowData || '{}').edgeCount,
+            maxDepth: analyzeWorkflowComplexity(wf.flowData || '{}').maxDepth,
+            criticalPath: analyzeWorkflowComplexity(wf.flowData || '{}').criticalPath,
+            bottlenecks: analyzeWorkflowComplexity(wf.flowData || '{}').bottlenecks,
+            optimizationSuggestions: analyzeWorkflowComplexity(wf.flowData || '{}').optimizationSuggestions,
+            
+            // Estrutura extraída
+            nodes: JSON.stringify(extractWorkflowStructure(wf.flowData || '{}').nodes),
+            connections: JSON.stringify(extractWorkflowStructure(wf.flowData || '{}').connections),
+            
+            // Capacidades identificadas
+            capabilities: JSON.stringify(identifyCapabilities(wf.flowData || '{}')),
+            
+            // Controle de sincronização
+            lastSyncAt: new Date()
+          }));
+          
+          allWorkflows = [...formattedExternalWorkflows];
+          console.log(`✅ Encontrados ${formattedExternalWorkflows.length} workflows no Flowise externo`);
+        }
+      } catch (externalError) {
+        console.error('❌ Erro ao buscar workflows do Flowise externo:', externalError);
+        // Continuar com workflows locais mesmo se a busca externa falhar
+      }
+    }
     
     // Se solicitado, buscar também agentes para exportação
     if (includeAgents && (!filters.type || filters.type === 'ALL')) {
@@ -373,8 +428,9 @@ async function getWorkflows({ filters = {}, page = 1, limit = 20, includeAgents 
       }
     }
 
-    // Calcular paginação considerando workflows transformados
-    const total = flowiseTotal + (includeAgents ? agents.length : 0);
+    // Calcular paginação considerando workflows (locais ou externos) e agentes transformados
+    const workflowsTotal = allWorkflows.length > flowiseWorkflows.length ? allWorkflows.length : flowiseTotal;
+    const total = workflowsTotal + (includeAgents ? agents.length : 0);
     const pages = Math.ceil(total / limit);
 
     return NextResponse.json({
@@ -388,8 +444,10 @@ async function getWorkflows({ filters = {}, page = 1, limit = 20, includeAgents 
       },
       meta: {
         flowiseWorkflows: flowiseWorkflows.length,
+        externalWorkflows: allWorkflows.length > flowiseWorkflows.length ? allWorkflows.length - flowiseWorkflows.length : 0,
         transformedAgents: includeAgents ? agents.length : 0,
-        totalWorkflows: allWorkflows.length
+        totalWorkflows: allWorkflows.length,
+        source: allWorkflows.length > flowiseWorkflows.length ? 'external' : 'local'
       }
     });
 
