@@ -24,6 +24,7 @@ model User {
   // Relacionamentos com o sistema Zanai
   agents    Agent[]
   workspaces Workspace[]
+  studioWorkflows StudioWorkflow[]
   
   // Relacionamentos com o sistema urbano
   companyId String?
@@ -59,6 +60,7 @@ model Workspace {
   agents      Agent[]
   compositions Composition[]
   mcpServers  MCPServer[]
+  studioWorkflows StudioWorkflow[]
   
   @@index([userId])
 }
@@ -551,6 +553,46 @@ model ExportLog {
   @@index([status])
   @@index([createdAt])
   @@map("export_logs")
+}
+
+// Modelos para o Studio de Workflows
+model StudioWorkflow {
+  id                    String   @id @default(cuid())
+  name                  String
+  description           String?
+  type                  String   @default("CHATFLOW") // 'CHATFLOW', 'AGENTFLOW', 'MULTIAGENT', 'ASSISTANT'
+  flowData              String   // JSON com estrutura completa do workflow
+  config                String?  // JSON com configurações adicionais
+  status                String   @default("draft") // 'draft', 'active', 'archived'
+  
+  // Metadados de importação
+  source                String?  // 'flowise_learning', 'agents', 'manual'
+  originalId            String?  // ID original na fonte
+  
+  // Análise e métricas
+  complexityScore      Int      @default(0) // 0-100
+  nodeCount             Int      @default(0)
+  edgeCount             Int      @default(0)
+  
+  // Controle de versão
+  version               Int      @default(1)
+  
+  // Relacionamentos
+  userId                String
+  user                  User     @relation(fields: [userId], references: [id])
+  workspaceId           String?
+  workspace             Workspace? @relation(fields: [workspaceId], references: [id])
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([workspaceId])
+  @@index([type])
+  @@index([status])
+  @@index([source])
+  @@index([complexityScore])
+  @@map("studio_workflows")
 }
 
 // Modelos para o sistema de aprendizado de templates
