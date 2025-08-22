@@ -23,8 +23,8 @@ interface FlowiseNode {
   label: string;
   desc: string;
   categoria: string;
-  inputs: string[];
-  outputs: string[];
+  inputs: string | string[];
+  outputs: string | string[];
 }
 
 interface WorkflowConfig {
@@ -184,14 +184,22 @@ export function WorkflowVisualization({
                     
                     {/* Inputs e Outputs */}
                     <div className="flex gap-2 mt-2">
-                      {node.inputs.length > 0 && (
+                      {node.inputs && node.inputs.length > 0 && (
                         <div className="text-xs">
-                          <span className="font-medium">Inputs:</span> {node.inputs.join(', ')}
+                          <span className="font-medium">Inputs:</span> {
+                            Array.isArray(node.inputs) 
+                              ? node.inputs.join(', ') 
+                              : node.inputs
+                          }
                         </div>
                       )}
-                      {node.outputs.length > 0 && (
+                      {node.outputs && node.outputs.length > 0 && (
                         <div className="text-xs">
-                          <span className="font-medium">Outputs:</span> {node.outputs.join(', ')}
+                          <span className="font-medium">Outputs:</span> {
+                            Array.isArray(node.outputs) 
+                              ? node.outputs.join(', ') 
+                              : node.outputs
+                          }
                         </div>
                       )}
                     </div>

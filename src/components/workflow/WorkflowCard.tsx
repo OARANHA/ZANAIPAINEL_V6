@@ -35,8 +35,8 @@ interface FlowiseNode {
   label: string;
   desc: string;
   categoria: string;
-  inputs: string[];
-  outputs: string[];
+  inputs: string | string[];
+  outputs: string | string[];
 }
 
 interface WorkflowConfig {
