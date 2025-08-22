@@ -44,7 +44,9 @@ export class AgentExecutionService {
         console.log('ZAI inicializado com sucesso');
       } catch (error) {
         console.error('Erro ao inicializar ZAI:', error);
-        throw new Error(`Falha ao inicializar serviço de IA: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+        // Em vez de lançar erro, vamos definir zai como null e usar modo fallback
+        this.zai = null;
+        console.warn('ZAI não disponível, usando modo de fallback');
       }
     }
     return this.zai;
@@ -71,6 +73,18 @@ export class AgentExecutionService {
 
       // Inicializar ZAI
       const zai = await this.initializeZAI();
+
+      // Verificar se ZAI está disponível
+      if (!zai) {
+        console.warn('ZAI não disponível, usando resposta simulada');
+        const executionTime = Date.now() - startTime;
+        
+        return {
+          success: true,
+          output: `[Resposta Simulada - ZAI não configurado]\n\nAgente: ${agent.name}\nInput: ${request.input}\n\nEsta é uma resposta simulada porque a ZAI_API_KEY não está configurada no ambiente. Para habilitar a execução real, configure a variável de ambiente ZAI_API_KEY.`,
+          executionTime
+        };
+      }
 
       // Preparar prompt com base na configuração do agente
       const systemPrompt = this.buildSystemPrompt(agent);
