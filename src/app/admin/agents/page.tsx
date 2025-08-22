@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -613,7 +614,7 @@ ${JSON.stringify(agent.groups, null, 2)}
                 Agentes Inteligentes
               </h1>
               <p className="text-gray-600 dark:text-gray-400">
-                Gerencie e execute seus agentes de IA com ações contextuais
+                Os agentes agora são gerenciados através do sistema de aprendizado integrado
               </p>
             </div>
             <div className="flex items-center space-x-4">
@@ -686,8 +687,8 @@ ${JSON.stringify(agent.groups, null, 2)}
           </div>
         )}
 
-        {/* Agents Grid */}
-        {!isLoading && (
+        {/* Agents Grid - Only show if there are agents */}
+        {!isLoading && filteredAgents.length > 0 && (
           <>
             {viewMode === 'functional' ? (
               // Functional Cards View
@@ -821,9 +822,11 @@ ${JSON.stringify(agent.groups, null, 2)}
                 })}
               </div>
             )}
+          </>
+        )}
 
-            {/* Empty State */}
-            {filteredAgents.length === 0 && (
+        {/* Empty State - Only show if there are no agents */}
+        {!isLoading && filteredAgents.length === 0 && (
               <div className="text-center py-16">
                 <div className="relative inline-block mb-6">
                   <div className="w-20 h-20 bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-800 rounded-2xl flex items-center justify-center">
@@ -834,18 +837,16 @@ ${JSON.stringify(agent.groups, null, 2)}
                   </div>
                 </div>
                 <h3 className="text-2xl font-semibold mb-3">
-                  {viewMode === 'functional' ? 'Nenhum agente funcional encontrado' : 'Nenhum agente encontrado'}
+                  Nenhum agente encontrado
                 </h3>
                 <p className="text-muted-foreground mb-6 max-w-md mx-auto">
                   {searchQuery || filterType !== 'all' 
                     ? 'Nenhum agente corresponde aos seus filtros. Tente ajustar sua busca ou filtros.'
-                    : viewMode === 'functional'
-                    ? 'Crie seu primeiro agente funcional para começar a transformar seus projetos com o poder da IA.'
-                    : 'Crie seu primeiro agente inteligente para começar a transformar seus projetos com o poder da IA.'
+                    : 'Os agentes agora são gerenciados através do sistema de aprendizado. Acesse a página de aprendizado para criar e gerenciar seus agentes.'
                   }
                 </p>
                 <div className="flex flex-col sm:flex-row items-center justify-center space-y-3 sm:space-y-0 sm:space-x-4">
-                  {(searchQuery || filterType !== 'all') && (
+                  {(searchQuery || filterType !== 'all') ? (
                     <Button 
                       variant="outline" 
                       onClick={() => {
@@ -857,20 +858,32 @@ ${JSON.stringify(agent.groups, null, 2)}
                       <Filter className="w-4 h-4 mr-2" />
                       Limpar Filtros
                     </Button>
-                  )}
-                  <Dialog open={isCreateAgentOpen} onOpenChange={setIsCreateAgentOpen}>
-                    <DialogTrigger asChild>
-                      <Button size="lg" className="h-11 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 shadow-lg px-6">
-                        <Plus className="w-5 h-5 mr-2" />
-                        Criar Primeiro Agente
+                  ) : (
+                    <>
+                      <Button 
+                        asChild
+                        className="h-11 bg-blue-600 hover:bg-blue-700"
+                      >
+                        <Link href="/admin/learning">
+                          <Brain className="w-4 h-4 mr-2" />
+                          Ir para Aprendizado
+                        </Link>
                       </Button>
-                    </DialogTrigger>
-                  </Dialog>
+                      <Button 
+                        variant="outline" 
+                        asChild
+                        className="h-11"
+                      >
+                        <Link href="/admin/learning">
+                          <Sparkles className="w-4 h-4 mr-2" />
+                          Criar Agente
+                        </Link>
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
             )}
-          </>
-        )}
 
         {/* Create Agent Dialog */}
         <Dialog open={isCreateAgentOpen} onOpenChange={setIsCreateAgentOpen}>
