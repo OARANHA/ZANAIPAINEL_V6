@@ -33,7 +33,8 @@ import {
   Eye,
   Edit,
   Trash2,
-  Search
+  Search,
+  BarChart3
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
