@@ -31,7 +31,9 @@ import {
   Trash2,
   Copy,
   Plus,
-  Info
+  Info,
+  Undo,
+  Redo
 } from 'lucide-react';
 
 // Dynamically import Drawflow to avoid SSR issues
@@ -39,6 +41,7 @@ const Drawflow = dynamic(() => import('drawflow'), { ssr: false });
 
 // Import Drawflow CSS
 import 'drawflow/dist/drawflow.min.css';
+import { WorkflowHistoryManager } from '@/lib/workflow-history';
 
 interface WorkflowNode {
   id: string;
@@ -92,13 +95,29 @@ export default function DrawflowCanvas({
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionMode, setConnectionMode] = useState<'edit' | 'view'>('edit');
   const [contextMenuNode, setContextMenuNode] = useState<WorkflowNode | null>(null);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
   
   const containerRef = useRef<HTMLDivElement>(null);
   const drawflowRef = useRef<any>(null);
+  const historyManagerRef = useRef<WorkflowHistoryManager | null>(null);
 
-  // Handle keyboard events for deletion
+  // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Undo: Ctrl+Z or Cmd+Z
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      }
+      
+      // Redo: Ctrl+Shift+Z or Cmd+Shift+Z or Ctrl+Y or Cmd+Y
+      if ((e.ctrlKey || e.metaKey) && ((e.key === 'z' && e.shiftKey) || e.key === 'y')) {
+        e.preventDefault();
+        handleRedo();
+      }
+      
+      // Delete: Delete or Backspace
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedNode && drawflowRef.current) {
           // Remove the selected node
@@ -113,14 +132,24 @@ export default function DrawflowCanvas({
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [selectedNode]);
+  }, [selectedNode, canUndo, canRedo]);
 
-  // Parse workflow data
+  // Parse workflow data and initialize history
   useEffect(() => {
     try {
       const flowData = JSON.parse(workflow.flowData);
       setNodes(flowData.nodes || []);
       setEdges(flowData.edges || []);
+      
+      // Initialize history manager
+      if (!historyManagerRef.current) {
+        historyManagerRef.current = new WorkflowHistoryManager({
+          nodes: flowData.nodes || [],
+          edges: flowData.edges || [],
+          timestamp: Date.now()
+        });
+        updateHistoryButtons();
+      }
     } catch (error) {
       console.error('Error parsing workflow data:', error);
     }
@@ -348,6 +377,17 @@ export default function DrawflowCanvas({
           nodes: workflowData.nodes,
           edges: workflowData.edges
         });
+        
+        // Save state to history
+        if (historyManagerRef.current) {
+          historyManagerRef.current.saveState({
+            nodes: workflowData.nodes,
+            edges: workflowData.edges,
+            timestamp: Date.now()
+          });
+          updateHistoryButtons();
+        }
+        
         onWorkflowChange(flowDataString);
       }
     }
@@ -479,6 +519,104 @@ export default function DrawflowCanvas({
     alert(`Informações do nó:\nID: ${node.id}\nTipo: ${node.data.type}\nPosição: (${node.position.x}, ${node.position.y})`);
   };
 
+  // Update history button states
+  const updateHistoryButtons = () => {
+    if (historyManagerRef.current) {
+      setCanUndo(historyManagerRef.current.canUndo());
+      setCanRedo(historyManagerRef.current.canRedo());
+    }
+  };
+
+  // Undo last action
+  const handleUndo = () => {
+    if (historyManagerRef.current && drawflowRef.current) {
+      const previousState = historyManagerRef.current.undo();
+      if (previousState) {
+        // Clear canvas
+        drawflowRef.current.clear();
+        
+        // Restore nodes
+        previousState.nodes.forEach((node: any) => {
+          drawflowRef.current.addNode(
+            'default',
+            node.position.x,
+            node.position.y,
+            {},
+            'default',
+            {
+              ...node.data,
+              id: node.id,
+              type: node.type,
+              position: node.position
+            },
+            node.id
+          );
+        });
+        
+        // Restore edges
+        previousState.edges.forEach((edge: any) => {
+          drawflowRef.current.addConnection(
+            edge.source,
+            edge.target,
+            'output_1',
+            'input_1'
+          );
+        });
+        
+        // Update local state
+        setNodes(previousState.nodes);
+        setEdges(previousState.edges);
+        updateHistoryButtons();
+        notifyWorkflowChange();
+      }
+    }
+  };
+
+  // Redo next action
+  const handleRedo = () => {
+    if (historyManagerRef.current && drawflowRef.current) {
+      const nextState = historyManagerRef.current.redo();
+      if (nextState) {
+        // Clear canvas
+        drawflowRef.current.clear();
+        
+        // Restore nodes
+        nextState.nodes.forEach((node: any) => {
+          drawflowRef.current.addNode(
+            'default',
+            node.position.x,
+            node.position.y,
+            {},
+            'default',
+            {
+              ...node.data,
+              id: node.id,
+              type: node.type,
+              position: node.position
+            },
+            node.id
+          );
+        });
+        
+        // Restore edges
+        nextState.edges.forEach((edge: any) => {
+          drawflowRef.current.addConnection(
+            edge.source,
+            edge.target,
+            'output_1',
+            'input_1'
+          );
+        });
+        
+        // Update local state
+        setNodes(nextState.nodes);
+        setEdges(nextState.edges);
+        updateHistoryButtons();
+        notifyWorkflowChange();
+      }
+    }
+  };
+
   // Get node color based on type
   const getNodeColor = (type: string): string => {
     const colors: { [key: string]: string } = {
@@ -524,6 +662,24 @@ export default function DrawflowCanvas({
           </div>
           
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleUndo}
+              disabled={!canUndo}
+              title="Desfazer (Ctrl+Z)"
+            >
+              <Undo className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRedo}
+              disabled={!canRedo}
+              title="Refazer (Ctrl+Y)"
+            >
+              <Redo className="w-4 h-4" />
+            </Button>
             <Button
               variant="outline"
               size="sm"

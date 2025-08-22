@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -22,11 +22,15 @@ import {
   FileText,
   Code,
   Users,
-  Database
+  Database,
+  Shield
 } from 'lucide-react';
 import DrawflowCanvas from './DrawflowCanvas';
 import NodeEditorDialog from './NodeEditorDialog';
 import WorkflowComplexityBadge from './WorkflowComplexityBadge';
+import WorkflowValidationDisplay from './WorkflowValidationDisplay';
+import { WorkflowValidator, ValidationResult } from '@/lib/workflow-validator';
+import { AutoSaveManager, AutoSaveState } from '@/lib/auto-save';
 
 interface FlowiseWorkflow {
   id: string;
@@ -83,13 +87,80 @@ export default function HybridWorkflowEditor({
   const [isNodeEditorOpen, setIsNodeEditorOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
   const [analysisResults, setAnalysisResults] = useState<any>(null);
+  const [validationResults, setValidationResults] = useState<ValidationResult | null>(null);
+  const [autoSaveState, setAutoSaveState] = useState<AutoSaveState>({
+    isSaving: false,
+    lastSaved: null,
+    isDirty: false,
+    retryCount: 0,
+    error: null
+  });
   const [workflowData, setWorkflowData] = useState(workflow);
+  const autoSaveManagerRef = useRef<AutoSaveManager | null>(null);
 
   // Update workflow data when prop changes
   useEffect(() => {
     setWorkflowData(workflow);
   }, [workflow]);
+
+  // Initialize auto-save manager
+  useEffect(() => {
+    if (!autoSaveManagerRef.current) {
+      const saveCallback = async (data: any) => {
+        try {
+          // Simulate API call to save workflow
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Call the parent save callback if available
+          if (onSave) {
+            onSave(data);
+          }
+          
+          console.log('Auto-save completed successfully');
+          return true;
+        } catch (error) {
+          console.error('Auto-save failed:', error);
+          return false;
+        }
+      };
+
+      autoSaveManagerRef.current = new AutoSaveManager(saveCallback, {
+        enabled: true,
+        interval: 30000, // 30 seconds
+        maxRetries: 3,
+        debounceTime: 2000 // 2 seconds
+      });
+
+      // Start periodic auto-save
+      autoSaveManagerRef.current.startPeriodicSave(workflowData);
+
+      // Set up state update listener
+      const updateAutoSaveState = () => {
+        if (autoSaveManagerRef.current) {
+          setAutoSaveState(autoSaveManagerRef.current.getState());
+        }
+      };
+
+      // Update state every second
+      const stateInterval = setInterval(updateAutoSaveState, 1000);
+
+      return () => {
+        clearInterval(stateInterval);
+        if (autoSaveManagerRef.current) {
+          autoSaveManagerRef.current.destroy();
+        }
+      };
+    }
+  }, []);
+
+  // Trigger auto-save when workflow data changes
+  useEffect(() => {
+    if (autoSaveManagerRef.current && workflowData !== workflow) {
+      autoSaveManagerRef.current.markDirty(workflowData);
+    }
+  }, [workflowData, workflow]);
 
   // Handle node click
   const handleNodeClick = (node: any) => {
@@ -210,6 +281,38 @@ export default function HybridWorkflowEditor({
       setIsAnalyzing(false);
     }
   };
+
+  // Validate workflow
+  const validateWorkflow = async () => {
+    setIsValidating(true);
+    try {
+      // Simulate validation delay
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      const flowData = JSON.parse(workflowData.flowData);
+      const nodes = flowData.nodes || [];
+      const edges = flowData.edges || [];
+      
+      // Perform validation
+      const validation = WorkflowValidator.validateWorkflow(nodes, edges);
+      setValidationResults(validation);
+    } catch (error) {
+      console.error('Error validating workflow:', error);
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
+  // Auto-validate on workflow changes
+  useEffect(() => {
+    if (workflowData.flowData) {
+      const debounceTimer = setTimeout(() => {
+        validateWorkflow();
+      }, 1000);
+      
+      return () => clearTimeout(debounceTimer);
+    }
+  }, [workflowData.flowData]);
 
   // Complexity calculation functions
   const calculateComplexityScore = (nodes: any[], edges: any[]): number => {
@@ -390,6 +493,39 @@ export default function HybridWorkflowEditor({
               </div>
             </div>
             
+            {/* Auto-save Status */}
+            <div className="flex items-center gap-2">
+              {autoSaveState.isSaving && (
+                <div className="flex items-center gap-2 text-sm text-blue-600">
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Salvando...</span>
+                </div>
+              )}
+              
+              {autoSaveState.lastSaved && !autoSaveState.isSaving && (
+                <div className="flex items-center gap-2 text-sm text-green-600">
+                  <CheckCircle className="w-4 h-4" />
+                  <span>
+                    Salvo {autoSaveState.lastSaved.toLocaleTimeString()}
+                  </span>
+                </div>
+              )}
+              
+              {autoSaveState.error && (
+                <div className="flex items-center gap-2 text-sm text-red-600">
+                  <AlertTriangle className="w-4 h-4" />
+                  <span>Erro ao salvar</span>
+                </div>
+              )}
+              
+              {autoSaveState.isDirty && !autoSaveState.isSaving && (
+                <div className="flex items-center gap-2 text-sm text-yellow-600">
+                  <div className="w-2 h-2 bg-yellow-600 rounded-full animate-pulse" />
+                  <span>Não salvo</span>
+                </div>
+              )}
+            </div>
+            
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
@@ -543,7 +679,7 @@ export default function HybridWorkflowEditor({
       
       {/* Main Editor */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="canvas" className="flex items-center gap-2">
             <Settings className="w-4 h-4" />
             Canvas Visual
@@ -551,6 +687,10 @@ export default function HybridWorkflowEditor({
           <TabsTrigger value="structure" className="flex items-center gap-2">
             <Code className="w-4 h-4" />
             Estrutura
+          </TabsTrigger>
+          <TabsTrigger value="validation" className="flex items-center gap-2">
+            <Shield className="w-4 h-4" />
+            Validação
           </TabsTrigger>
           <TabsTrigger value="capabilities" className="flex items-center gap-2">
             <Zap className="w-4 h-4" />
@@ -621,6 +761,14 @@ export default function HybridWorkflowEditor({
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+        
+        <TabsContent value="validation" className="space-y-6">
+          <WorkflowValidationDisplay
+            validation={validationResults}
+            isValidating={isValidating}
+            onRefresh={validateWorkflow}
+          />
         </TabsContent>
         
         <TabsContent value="capabilities" className="space-y-6">
