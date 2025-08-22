@@ -5,6 +5,13 @@ import dynamic from 'next/dynamic';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+  ContextMenuSeparator,
+} from '@/components/ui/context-menu';
 import { 
   ZoomIn, 
   ZoomOut, 
@@ -16,7 +23,15 @@ import {
   Eye,
   Edit,
   RefreshCw,
-  Download
+  Download,
+  Link,
+  Unlink,
+  Lock,
+  Unlock,
+  Trash2,
+  Copy,
+  Plus,
+  Info
 } from 'lucide-react';
 
 // Dynamically import Drawflow to avoid SSR issues
@@ -54,6 +69,7 @@ interface DrawflowCanvasProps {
   };
   onNodeClick?: (node: WorkflowNode) => void;
   onEditNode?: (node: WorkflowNode) => void;
+  onWorkflowChange?: (updatedFlowData: string) => void;
   onSave?: () => void;
   onPreview?: () => void;
   className?: string;
@@ -63,6 +79,7 @@ export default function DrawflowCanvas({
   workflow,
   onNodeClick,
   onEditNode,
+  onWorkflowChange,
   onSave,
   onPreview,
   className = ""
@@ -71,9 +88,32 @@ export default function DrawflowCanvas({
   const [edges, setEdges] = useState<WorkflowEdge[]>([]);
   const [selectedNode, setSelectedNode] = useState<WorkflowNode | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectionMode, setConnectionMode] = useState<'edit' | 'view'>('edit');
+  const [contextMenuNode, setContextMenuNode] = useState<WorkflowNode | null>(null);
   
   const containerRef = useRef<HTMLDivElement>(null);
   const drawflowRef = useRef<any>(null);
+
+  // Handle keyboard events for deletion
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedNode && drawflowRef.current) {
+          // Remove the selected node
+          drawflowRef.current.removeNodeId(selectedNode.id);
+          setSelectedNode(null);
+          notifyWorkflowChange();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedNode]);
 
   // Parse workflow data
   useEffect(() => {
@@ -101,11 +141,23 @@ export default function DrawflowCanvas({
       const DrawflowModule = await import('drawflow');
       const DrawflowClass = DrawflowModule.default;
       
-      // Create Drawflow instance
+      // Create Drawflow instance with editor mode enabled
       drawflowRef.current = new DrawflowClass(containerRef.current, 'vue', false, false);
+      
+      // Enable editor mode
+      drawflowRef.current.editorMode = 'edit';
       
       // Start Drawflow
       drawflowRef.current.start();
+      
+      // Enable node dragging
+      drawflowRef.current.draggable = true;
+      
+      // Enable connection creation
+      drawflowRef.current.connectionMode = true;
+      
+      // Enable connection deletion
+      drawflowRef.current.connectionDeletion = true;
       
       // Register custom node types
       registerNodeTypes();
@@ -178,25 +230,142 @@ export default function DrawflowCanvas({
   const setupEventListeners = () => {
     if (!drawflowRef.current) return;
 
-    // Node click event
+    // Node created event
     drawflowRef.current.on('nodeCreated', (nodeId: string) => {
       console.log('Node created:', nodeId);
+      notifyWorkflowChange();
+    });
+
+    // Node removed event
+    drawflowRef.current.on('nodeRemoved', (nodeId: string) => {
+      console.log('Node removed:', nodeId);
+      notifyWorkflowChange();
     });
 
     // Node selected event
     drawflowRef.current.on('nodeSelected', (nodeId: string) => {
       console.log('Node selected:', nodeId);
+      const node = drawflowRef.current.getNodeFromId(nodeId);
+      if (node) {
+        const workflowNode = convertDrawflowNodeToWorkflowNode(node);
+        setSelectedNode(workflowNode);
+        onNodeClick?.(workflowNode);
+      }
+    });
+
+    // Node moved event
+    drawflowRef.current.on('nodeMoved', (nodeId: string) => {
+      console.log('Node moved:', nodeId);
+      notifyWorkflowChange();
+    });
+
+    // Connection started event
+    drawflowRef.current.on('connectionStart', (connection: any) => {
+      console.log('Connection started:', connection);
+      setIsConnecting(true);
+    });
+
+    // Connection ended event
+    drawflowRef.current.on('connectionEnd', (connection: any) => {
+      console.log('Connection ended:', connection);
+      setIsConnecting(false);
     });
 
     // Connection created event
     drawflowRef.current.on('connectionCreated', (connection: any) => {
       console.log('Connection created:', connection);
+      setIsConnecting(false);
+      notifyWorkflowChange();
     });
 
     // Connection removed event
     drawflowRef.current.on('connectionRemoved', (connection: any) => {
       console.log('Connection removed:', connection);
+      notifyWorkflowChange();
     });
+
+    // Module changed event (any change in the canvas)
+    drawflowRef.current.on('moduleChanged', (module: any) => {
+      console.log('Module changed:', module);
+      notifyWorkflowChange();
+    });
+  };
+
+  // Convert Drawflow data to workflow format
+  const convertDrawflowToWorkflow = () => {
+    if (!drawflowRef.current) return null;
+
+    try {
+      const drawflowData = drawflowRef.current.export();
+      const workflowNodes: WorkflowNode[] = [];
+      const workflowEdges: WorkflowEdge[] = [];
+
+      // Convert nodes
+      Object.values(drawflowData.drawflow.Home.data).forEach((nodeData: any) => {
+        if (nodeData.name) {
+          workflowNodes.push({
+            id: nodeData.id,
+            type: nodeData.name,
+            position: { x: nodeData.pos_x, y: nodeData.pos_y },
+            data: {
+              label: nodeData.data.label || nodeData.name,
+              type: nodeData.name,
+              category: nodeData.data.category || 'General',
+              ...nodeData.data
+            }
+          });
+        }
+      });
+
+      // Convert edges
+      Object.values(drawflowData.drawflow.Home.data).forEach((nodeData: any) => {
+        if (nodeData.outputs && nodeData.outputs.output_1) {
+          nodeData.outputs.output_1.connections.forEach((connection: any) => {
+            workflowEdges.push({
+              source: nodeData.id,
+              target: connection.node
+            });
+          });
+        }
+      });
+
+      return {
+        nodes: workflowNodes,
+        edges: workflowEdges
+      };
+    } catch (error) {
+      console.error('Error converting Drawflow data:', error);
+      return null;
+    }
+  };
+
+  // Notify parent component of workflow changes
+  const notifyWorkflowChange = () => {
+    if (onWorkflowChange) {
+      const workflowData = convertDrawflowToWorkflow();
+      if (workflowData) {
+        const flowDataString = JSON.stringify({
+          nodes: workflowData.nodes,
+          edges: workflowData.edges
+        });
+        onWorkflowChange(flowDataString);
+      }
+    }
+  };
+
+  // Convert Drawflow node to workflow node format
+  const convertDrawflowNodeToWorkflowNode = (drawflowNode: any): WorkflowNode => {
+    return {
+      id: drawflowNode.id,
+      type: drawflowNode.name,
+      position: { x: drawflowNode.pos_x, y: drawflowNode.pos_y },
+      data: {
+        label: drawflowNode.data.label || drawflowNode.name,
+        type: drawflowNode.name,
+        category: drawflowNode.data.category || 'General',
+        ...drawflowNode.data
+      }
+    };
   };
 
   // Drawflow control functions
@@ -224,6 +393,90 @@ export default function DrawflowCanvas({
       console.log('Exported Drawflow data:', data);
       // Here you could save the data or update the workflow
     }
+  };
+
+  // Toggle connection mode
+  const toggleConnectionMode = () => {
+    if (drawflowRef.current) {
+      const newMode = connectionMode === 'edit' ? 'view' : 'edit';
+      setConnectionMode(newMode);
+      drawflowRef.current.connectionMode = newMode === 'edit';
+      console.log(`Connection mode: ${newMode}`);
+    }
+  };
+
+  // Clear all connections
+  const clearAllConnections = () => {
+    if (drawflowRef.current) {
+      const data = drawflowRef.current.export();
+      Object.values(data.drawflow.Home.data).forEach((nodeData: any) => {
+        if (nodeData.outputs && nodeData.outputs.output_1) {
+          nodeData.outputs.output_1.connections.forEach((connection: any) => {
+            drawflowRef.current.removeSingleConnection(
+              nodeData.id,
+              connection.node,
+              'output_1',
+              'input_1'
+            );
+          });
+        }
+      });
+      notifyWorkflowChange();
+      console.log('All connections cleared');
+    }
+  };
+
+  // Delete selected node
+  const deleteSelectedNode = () => {
+    if (selectedNode && drawflowRef.current) {
+      drawflowRef.current.removeNodeId(selectedNode.id);
+      setSelectedNode(null);
+      notifyWorkflowChange();
+    }
+  };
+
+  // Delete selected connection (if any)
+  const deleteSelectedConnection = () => {
+    if (drawflowRef.current) {
+      // This would need to be implemented based on how Drawflow handles connection selection
+      console.log('Delete selected connection - to be implemented');
+    }
+  };
+
+  // Context menu actions
+  const handleContextMenuEdit = (node: WorkflowNode) => {
+    onEditNode?.(node);
+  };
+
+  const handleContextMenuDelete = (node: WorkflowNode) => {
+    if (drawflowRef.current) {
+      drawflowRef.current.removeNodeId(node.id);
+      setSelectedNode(null);
+      notifyWorkflowChange();
+    }
+  };
+
+  const handleContextMenuDuplicate = (node: WorkflowNode) => {
+    if (drawflowRef.current) {
+      const newNodeId = `node_${Date.now()}`;
+      drawflowRef.current.addNode(
+        'default',
+        node.position.x + 50,
+        node.position.y + 50,
+        {},
+        'default',
+        {
+          ...node.data,
+          label: `${node.data.label} (cópia)`
+        },
+        newNodeId
+      );
+      notifyWorkflowChange();
+    }
+  };
+
+  const handleContextMenuInfo = (node: WorkflowNode) => {
+    alert(`Informações do nó:\nID: ${node.id}\nTipo: ${node.data.type}\nPosição: (${node.position.x}, ${node.position.y})`);
   };
 
   // Get node color based on type
@@ -298,6 +551,22 @@ export default function DrawflowCanvas({
             <Button
               variant="outline"
               size="sm"
+              onClick={toggleConnectionMode}
+              title={connectionMode === 'edit' ? 'Desabilitar conexões' : 'Habilitar conexões'}
+            >
+              {connectionMode === 'edit' ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={clearAllConnections}
+              title="Limpar todas as conexões"
+            >
+              <Unlink className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={exportData}
               title="Exportar dados"
             >
@@ -321,10 +590,27 @@ export default function DrawflowCanvas({
         
         <div className="flex items-center justify-between">
           <div className="text-sm text-muted-foreground">
-            {nodes.length} nós • {edges.length} conexões
+            {nodes.length} nós • {edges.length} conexões • 
+            <span className={`ml-2 px-2 py-1 rounded text-xs ${
+              connectionMode === 'edit' 
+                ? 'bg-green-100 text-green-800' 
+                : 'bg-gray-100 text-gray-800'
+            }`}>
+              {connectionMode === 'edit' ? 'Modo Edição' : 'Modo Visualização'}
+            </span>
           </div>
           
           <div className="flex items-center gap-2">
+            {selectedNode && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={deleteSelectedNode}
+                title="Deletar nó selecionado"
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            )}
             {onPreview && (
               <Button
                 variant="outline"
@@ -378,63 +664,153 @@ export default function DrawflowCanvas({
           </div>
           
           {/* Main canvas area */}
-          <div
-            ref={containerRef}
-            className="flex-1 relative bg-gray-50"
-            style={{
-              background: '#f9fafb',
-              backgroundImage: `
-                linear-gradient(rgba(0, 0, 0, 0.1) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(0, 0, 0, 0.1) 1px, transparent 1px)
-              `,
-              backgroundSize: '20px 20px'
-            }}
-            onDragOver={(e) => {
-              e.preventDefault();
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              const nodeType = e.dataTransfer.getData('nodeType');
-              if (nodeType && drawflowRef.current) {
-                const rect = e.currentTarget.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
+          <ContextMenu>
+            <ContextMenuTrigger>
+              <div
+                ref={containerRef}
+                className="flex-1 relative bg-gray-50"
+                style={{
+                  background: '#f9fafb',
+                  backgroundImage: `
+                    linear-gradient(rgba(0, 0, 0, 0.1) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(0, 0, 0, 0.1) 1px, transparent 1px)
+                  `,
+                  backgroundSize: '20px 20px'
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const nodeType = e.dataTransfer.getData('nodeType');
+                  if (nodeType && drawflowRef.current) {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    
+                    // Add new node to Drawflow
+                    const newNodeId = `node_${Date.now()}`;
+                    drawflowRef.current.addNode(
+                      'default',
+                      x,
+                      y,
+                      {},
+                      'default',
+                      {
+                        label: nodeType,
+                        type: nodeType,
+                        category: 'General'
+                      },
+                      newNodeId
+                    );
+                    
+                    console.log(`Added ${nodeType} node at (${x}, ${y})`);
+                    
+                    // Notify parent component of the change
+                    notifyWorkflowChange();
+                  }
+                }}
+              >
+                {!isInitialized && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-white/80">
+                    <div className="text-center">
+                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                      <p className="text-gray-600">Carregando editor Drawflow...</p>
+                    </div>
+                  </div>
+                )}
                 
-                // Add new node to Drawflow
-                const newNodeId = `node_${Date.now()}`;
-                drawflowRef.current.addNode(
-                  'default',
-                  x,
-                  y,
-                  {},
-                  'default',
-                  {
-                    label: nodeType,
-                    type: nodeType,
-                    category: 'General'
-                  },
-                  newNodeId
-                );
+                {/* Connection mode indicator */}
+                {isConnecting && (
+                  <div className="absolute top-4 right-4 bg-blue-600 text-white text-xs px-3 py-2 rounded-lg pointer-events-none">
+                    🔗 Modo de conexão ativo - Clique em um nó para conectar
+                  </div>
+                )}
                 
-                console.log(`Added ${nodeType} node at (${x}, ${y})`);
-              }
-            }}
-          >
-            {!isInitialized && (
-              <div className="absolute inset-0 flex items-center justify-center bg-white/80">
-                <div className="text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                  <p className="text-gray-600">Carregando editor Drawflow...</p>
+                {/* Instructions overlay */}
+                <div className="absolute bottom-4 left-4 bg-black/70 text-white text-xs px-3 py-2 rounded-lg pointer-events-none">
+                  <div>🖱️ Arraste nós da sidebar • Arraste nós para reposicionar</div>
+                  <div>🔗 Conecte nós clicando nos pontos de conexão • Delete com Delete/Backspace ou botão 🗑️</div>
+                  <div>📋 Use o scroll para zoom • Clique nos nós para selecionar</div>
+                  <div>🖱️ Botão direito nos nós para menu de contexto</div>
                 </div>
               </div>
-            )}
+            </ContextMenuTrigger>
             
-            {/* Instructions overlay */}
-            <div className="absolute bottom-4 left-4 bg-black/70 text-white text-xs px-3 py-2 rounded-lg pointer-events-none">
-              <div>🖱️ Arraste nós da sidebar • Conecte nós clicando e arrastando</div>
-              <div>📋 Use o scroll para zoom • Clique nos nós para selecionar</div>
-            </div>
-          </div>
+            <ContextMenuContent className="w-64">
+              {contextMenuNode && (
+                <>
+                  <ContextMenuItem 
+                    onClick={() => handleContextMenuEdit(contextMenuNode)}
+                    className="flex items-center gap-2"
+                  >
+                    <Edit className="w-4 h-4" />
+                    Editar Nó
+                  </ContextMenuItem>
+                  <ContextMenuItem 
+                    onClick={() => handleContextMenuDuplicate(contextMenuNode)}
+                    className="flex items-center gap-2"
+                  >
+                    <Copy className="w-4 h-4" />
+                    Duplicar Nó
+                  </ContextMenuItem>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem 
+                    onClick={() => handleContextMenuInfo(contextMenuNode)}
+                    className="flex items-center gap-2"
+                  >
+                    <Info className="w-4 h-4" />
+                    Informações
+                  </ContextMenuItem>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem 
+                    onClick={() => handleContextMenuDelete(contextMenuNode)}
+                    className="flex items-center gap-2 text-red-600"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Deletar Nó
+                  </ContextMenuItem>
+                </>
+              )}
+              
+              {!contextMenuNode && (
+                <>
+                  <ContextMenuItem 
+                    onClick={() => {
+                      const newNodeId = `node_${Date.now()}`;
+                      if (drawflowRef.current) {
+                        drawflowRef.current.addNode(
+                          'default',
+                          100,
+                          100,
+                          {},
+                          'default',
+                          {
+                            label: 'Novo Nó',
+                            type: 'Agent',
+                            category: 'General'
+                          },
+                          newNodeId
+                        );
+                        notifyWorkflowChange();
+                      }
+                    }}
+                    className="flex items-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Adicionar Nó
+                  </ContextMenuItem>
+                  <ContextMenuItem 
+                    onClick={clearAllConnections}
+                    className="flex items-center gap-2"
+                  >
+                    <Unlink className="w-4 h-4" />
+                    Limpar Conexões
+                  </ContextMenuItem>
+                </>
+              )}
+            </ContextMenuContent>
+          </ContextMenu>
         </div>
       </CardContent>
     </Card>

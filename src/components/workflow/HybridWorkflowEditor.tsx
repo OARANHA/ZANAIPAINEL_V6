@@ -133,6 +133,34 @@ export default function HybridWorkflowEditor({
     setIsNodeEditorOpen(false);
   };
 
+  // Handle workflow change from canvas
+  const handleWorkflowChange = (updatedFlowData: string) => {
+    try {
+      const updatedWorkflow = {
+        ...workflowData,
+        flowData: updatedFlowData,
+        updatedAt: new Date().toISOString()
+      };
+      
+      setWorkflowData(updatedWorkflow);
+      
+      // Update node and edge counts
+      const flowData = JSON.parse(updatedFlowData);
+      const nodes = flowData.nodes || [];
+      const edges = flowData.edges || [];
+      
+      updatedWorkflow.nodeCount = nodes.length;
+      updatedWorkflow.edgeCount = edges.length;
+      
+      // Recalculate complexity
+      updatedWorkflow.complexityScore = calculateComplexityScore(nodes, edges);
+      
+      setWorkflowData({ ...updatedWorkflow });
+    } catch (error) {
+      console.error('Error handling workflow change:', error);
+    }
+  };
+
   // Handle workflow save
   const handleSave = async () => {
     setIsSaving(true);
@@ -535,6 +563,7 @@ export default function HybridWorkflowEditor({
             workflow={workflowData}
             onNodeClick={handleNodeClick}
             onEditNode={handleNodeEdit}
+            onWorkflowChange={handleWorkflowChange}
             onSave={handleSave}
             onPreview={onPreview}
           />
