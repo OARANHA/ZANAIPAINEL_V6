@@ -271,7 +271,7 @@ export default function HybridWorkflowEditor({
           memoryUsage: estimateMemoryUsage(nodes),
           parallelizationPotential: calculateParallelizationPotential(nodes, edges)
         },
-        validationResults: validateWorkflow(nodes, edges)
+        validationResults: validateWorkflowStructure(nodes, edges)
       };
       
       setAnalysisResults(analysis);
@@ -438,7 +438,7 @@ export default function HybridWorkflowEditor({
     return potential;
   };
 
-  const validateWorkflow = (nodes: any[], edges: any[]): any => {
+  const validateWorkflowStructure = (nodes: any[], edges: any[]): any => {
     const errors: string[] = [];
     const warnings: string[] = [];
     
