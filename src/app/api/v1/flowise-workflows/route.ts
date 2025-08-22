@@ -465,29 +465,104 @@ async function updateWorkflow({ flowiseId, data }: { flowiseId: string; data: Pa
 // Deletar workflow
 async function deleteWorkflow({ flowiseId }: { flowiseId: string }) {
   try {
+    // 1. Primeiro excluir do Flowise externo
+    const flowiseBaseUrl = "https://aaranha-zania.hf.space";
+    const deleteUrl = `${flowiseBaseUrl}/api/v1/chatflows/${flowiseId}`;
+    
+    console.log(`🗑️ Excluindo workflow do Flowise externo: ${deleteUrl}`);
+    
+    const flowiseResponse = await fetch(deleteUrl, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer wNFL5HJcOA3RwJdKiVTUWqdzigK7OCUwRKo9KEgjenw`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    let deletedFromFlowise = false;
+    let flowiseError = null;
+
+    if (!flowiseResponse.ok) {
+      const errorText = await flowiseResponse.text();
+      flowiseError = `Falha ao excluir do Flowise: ${flowiseResponse.status} - ${errorText}`;
+      console.warn('⚠️ Não foi possível excluir do Flowise:', flowiseError);
+    } else {
+      deletedFromFlowise = true;
+      console.log('✅ Workflow excluído com sucesso do Flowise externo');
+    }
+
+    // 2. Depois excluir do banco local (independente do resultado do Flowise)
     const deleted = await db.flowiseWorkflow.delete({
       where: { flowiseId }
     });
 
-    // Registrar evento de deleção
+    console.log(`✅ Workflow "${deleted.name}" excluído do banco de dados local`);
+
+    // 3. Registrar log com detalhes completos
     await db.syncLog.create({
       data: {
         action: 'WORKFLOW_DELETED',
         flowiseId,
-        details: JSON.stringify({ name: deleted.name }),
-        status: 'SUCCESS'
+        details: JSON.stringify({ 
+          name: deleted.name,
+          deletedFromFlowise: deletedFromFlowise,
+          flowiseError: flowiseError,
+          flowiseId: flowiseId
+        }),
+        status: deletedFromFlowise ? 'SUCCESS' : 'PARTIAL'
       }
     });
 
-    return NextResponse.json({
-      success: true,
-      deleted
-    });
+    // 4. Retornar resposta apropriada
+    if (deletedFromFlowise) {
+      return NextResponse.json({
+        success: true,
+        deleted,
+        message: 'Workflow excluído com sucesso do banco de dados e do Flowise',
+        details: {
+          deletedFromFlowise: true,
+          deletedFromDatabase: true
+        }
+      });
+    } else {
+      return NextResponse.json({
+        success: true,
+        deleted,
+        message: 'Workflow excluído do banco de dados, mas houve um problema ao excluir do Flowise',
+        warning: flowiseError,
+        details: {
+          deletedFromFlowise: false,
+          deletedFromDatabase: true,
+          flowiseError: flowiseError
+        }
+      });
+    }
 
   } catch (error) {
-    console.error('Erro ao deletar workflow:', error);
+    console.error('❌ Erro ao deletar workflow:', error);
+    
+    // Registrar erro no log
+    try {
+      await db.syncLog.create({
+        data: {
+          action: 'WORKFLOW_DELETED',
+          flowiseId,
+          details: JSON.stringify({ 
+            error: error.message,
+            flowiseId: flowiseId
+          }),
+          status: 'ERROR'
+        }
+      });
+    } catch (logError) {
+      console.error('❌ Erro ao registrar log de exclusão:', logError);
+    }
+
     return NextResponse.json(
-      { error: 'Falha ao deletar workflow' },
+      { 
+        error: 'Falha ao deletar workflow',
+        details: error instanceof Error ? error.message : 'Erro desconhecido'
+      },
       { status: 500 }
     );
   }

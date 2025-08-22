@@ -307,19 +307,49 @@ export default function FlowiseWorkflowManager() {
       });
 
       if (response.ok) {
-        toast({
-          title: "Workflow excluído com sucesso!",
-          description: `O workflow "${workflow.name}" foi excluído permanentemente.`,
-        });
-        // Recarregar a lista de workflows
-        await loadWorkflows();
-        await loadStats();
+        const result = await response.json();
+        
+        if (result.success) {
+          if (result.details?.deletedFromFlowise && result.details?.deletedFromDatabase) {
+            // Sucesso completo - excluído de ambos os sistemas
+            toast({
+              title: "✅ Workflow excluído com sucesso!",
+              description: `O workflow "${workflow.name}" foi excluído permanentemente do Flowise e do ZanAI.`,
+            });
+          } else if (result.details?.deletedFromDatabase && !result.details?.deletedFromFlowise) {
+            // Sucesso parcial - excluído apenas do banco local
+            toast({
+              title: "⚠️ Workflow excluído parcialmente",
+              description: `O workflow "${workflow.name}" foi excluído do ZanAI, mas houve um problema ao excluir do Flowise.`,
+              variant: "default",
+            });
+            console.warn('Aviso de exclusão parcial:', result.warning);
+          } else {
+            // Outro cenário de sucesso
+            toast({
+              title: "Workflow excluído!",
+              description: result.message || `O workflow "${workflow.name}" foi processado.`,
+            });
+          }
+          
+          // Recarregar a lista de workflows
+          await loadWorkflows();
+          await loadStats();
+        } else {
+          toast({
+            title: "Erro ao excluir workflow",
+            description: result.error || `Não foi possível excluir o workflow "${workflow.name}".`,
+            variant: "destructive",
+          });
+        }
       } else {
+        const errorText = await response.text();
         toast({
           title: "Erro ao excluir workflow",
-          description: `Não foi possível excluir o workflow "${workflow.name}".`,
+          description: `Não foi possível excluir o workflow "${workflow.name}". Status: ${response.status}`,
           variant: "destructive",
         });
+        console.error('Erro na resposta da API:', errorText);
       }
     } catch (error) {
       toast({
