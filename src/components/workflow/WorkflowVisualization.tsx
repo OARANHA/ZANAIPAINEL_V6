@@ -184,20 +184,20 @@ export function WorkflowVisualization({
                     
                     {/* Inputs e Outputs */}
                     <div className="flex gap-2 mt-2">
-                      {node.inputs && node.inputs.length > 0 && (
+                      {node.inputs && (
                         <div className="text-xs">
                           <span className="font-medium">Inputs:</span> {
                             Array.isArray(node.inputs) 
-                              ? node.inputs.join(', ') 
+                              ? (node.inputs.length > 0 ? node.inputs.join(', ') : 'Nenhum')
                               : node.inputs
                           }
                         </div>
                       )}
-                      {node.outputs && node.outputs.length > 0 && (
+                      {node.outputs && (
                         <div className="text-xs">
                           <span className="font-medium">Outputs:</span> {
                             Array.isArray(node.outputs) 
-                              ? node.outputs.join(', ') 
+                              ? (node.outputs.length > 0 ? node.outputs.join(', ') : 'Nenhum')
                               : node.outputs
                           }
                         </div>
@@ -240,13 +240,17 @@ export function WorkflowVisualization({
                 <div>
                   <div className="font-medium mb-1">Inputs</div>
                   <div className="text-muted-foreground">
-                    {selectedNode.inputs.length > 0 ? selectedNode.inputs.join(', ') : 'Nenhum'}
+                    {Array.isArray(selectedNode.inputs) && selectedNode.inputs.length > 0 
+                      ? selectedNode.inputs.join(', ') 
+                      : selectedNode.inputs || 'Nenhum'}
                   </div>
                 </div>
                 <div>
                   <div className="font-medium mb-1">Outputs</div>
                   <div className="text-muted-foreground">
-                    {selectedNode.outputs.length > 0 ? selectedNode.outputs.join(', ') : 'Nenhum'}
+                    {Array.isArray(selectedNode.outputs) && selectedNode.outputs.length > 0 
+                      ? selectedNode.outputs.join(', ') 
+                      : selectedNode.outputs || 'Nenhum'}
                   </div>
                 </div>
               </div>

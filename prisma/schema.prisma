@@ -552,3 +552,24 @@ model ExportLog {
   @@index([createdAt])
   @@map("export_logs")
 }
+
+// Modelos para o sistema de aprendizado de templates
+model LearnedTemplate {
+  id                    String   @id @default(cuid())
+  sourceWorkflowId     String   // ID do workflow original no Flowise
+  name                  String
+  category              String   // Categoria do template
+  complexity            String   // 'simple', 'medium', 'complex'
+  patterns              String   // JSON com padrões extraídos
+  zanaiConfig           String   // JSON com configuração simplificada para Zanai
+  validated             Boolean  @default(false) // Se foi validado por humano
+  usageCount            Int      @default(0) // Quantas vezes foi usado
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  @@index([sourceWorkflowId])
+  @@index([category])
+  @@index([complexity])
+  @@index([validated])
+  @@map("learned_templates")
+}
