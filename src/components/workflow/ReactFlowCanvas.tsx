@@ -209,55 +209,202 @@ export default function ReactFlowCanvas({
   useEffect(() => {
     try {
       const flowData = JSON.parse(workflow.flowData);
-      const workflowNodes = flowData.nodes || [];
-      const workflowEdges = flowData.edges || [];
+      console.log('🔍 Workflow data loaded:', flowData);
+      
+      // Try different possible structures for nodes and edges
+      let workflowNodes = [];
+      let workflowEdges = [];
+      
+      // Case 1: Direct nodes and edges
+      if (flowData.nodes && flowData.edges) {
+        workflowNodes = flowData.nodes;
+        workflowEdges = flowData.edges;
+      }
+      // Case 2: Nested structure
+      else if (flowData.data && flowData.data.nodes && flowData.data.edges) {
+        workflowNodes = flowData.data.nodes;
+        workflowEdges = flowData.data.edges;
+      }
+      // Case 3: Only nodes, try to infer edges from node connections
+      else if (flowData.nodes) {
+        workflowNodes = flowData.nodes;
+        // Try to create edges from node connections if they exist
+        workflowEdges = [];
+        flowData.nodes.forEach((node: any) => {
+          if (node.data && node.data.connections) {
+            node.data.connections.forEach((targetId: string) => {
+              workflowEdges.push({
+                source: node.id,
+                target: targetId
+              });
+            });
+          }
+        });
+      }
+      
+      console.log('📊 Nodes found:', workflowNodes.length);
+      console.log('🔗 Edges found:', workflowEdges.length);
+      
+      // If no edges found but we have nodes, create some default connections
+      if (workflowEdges.length === 0 && workflowNodes.length > 1) {
+        console.log('🔗 No edges found, creating default connections...');
+        for (let i = 0; i < workflowNodes.length - 1; i++) {
+          workflowEdges.push({
+            source: workflowNodes[i].id,
+            target: workflowNodes[i + 1].id
+          });
+        }
+        console.log('🔗 Created default edges:', workflowEdges.length);
+      }
 
       // Convert nodes to ReactFlow format
-      const reactFlowNodes: Node[] = workflowNodes.map((node: WorkflowNode) => ({
-        id: node.id,
-        type: 'custom',
-        position: node.position,
-        data: {
-          ...node.data,
-          onEdit: () => onEditNode?.(node),
-        },
-        sourcePosition: Position.Right,
-        targetPosition: Position.Left,
-        // Habilitar arrastar nós
-        draggable: true,
-      }));
+      const reactFlowNodes: Node[] = workflowNodes.map((node: WorkflowNode) => {
+        console.log(`📦 Processing node ${node.id}:`, node);
+        return {
+          id: node.id,
+          type: 'custom',
+          position: node.position || { x: 0, y: 0 },
+          data: {
+            ...node.data,
+            onEdit: () => onEditNode?.(node),
+          },
+          sourcePosition: Position.Right,
+          targetPosition: Position.Left,
+          // Habilitar arrastar nós
+          draggable: true,
+        };
+      });
 
       // Convert edges to ReactFlow format - White connection lines
-      const reactFlowEdges: Edge[] = workflowEdges.map((edge: WorkflowEdge, index: number) => ({
-        id: `edge-${index}`,
-        source: edge.source,
-        target: edge.target,
-        type: 'smoothstep',
-        animated: false,
-        style: { 
-          stroke: '#ffffff', 
-          strokeWidth: 2,
-          filter: 'drop-shadow(0 0 3px rgba(255,255,255,0.5))'
-        },
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          color: '#ffffff',
-          width: 15,
-          height: 15,
-        },
-        // Habilitar edição de arestas
-        selectable: true,
-        updatable: true,
-        deletable: true,
-        className: 'transition-all duration-200',
-      }));
+      const reactFlowEdges: Edge[] = workflowEdges.map((edge: WorkflowEdge, index: number) => {
+        console.log(`🔗 Creating edge ${index}:`, edge);
+        return {
+          id: `edge-${index}`,
+          source: edge.source,
+          target: edge.target,
+          type: 'smoothstep',
+          animated: false,
+          style: { 
+            stroke: '#ffffff', 
+            strokeWidth: 2,
+            filter: 'drop-shadow(0 0 3px rgba(255,255,255,0.5))'
+          },
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            color: '#ffffff',
+            width: 15,
+            height: 15,
+          },
+          // Habilitar edição de arestas
+          selectable: true,
+          updatable: true,
+          deletable: true,
+          className: 'transition-all duration-200',
+        };
+      });
 
+      console.log('✅ Setting ReactFlow nodes:', reactFlowNodes.length);
+      console.log('✅ Setting ReactFlow edges:', reactFlowEdges.length);
+      
       setNodes(reactFlowNodes);
       setEdges(reactFlowEdges);
     } catch (error) {
-      console.error('Error parsing workflow data:', error);
+      console.error('❌ Error parsing workflow data:', error);
+      console.error('❌ Workflow data string:', workflow.flowData);
+      
+      // Create a default workflow if parsing fails
+      console.log('🔄 Creating default workflow...');
+      const defaultNodes = [
+        {
+          id: 'node-1',
+          type: 'custom',
+          position: { x: 100, y: 100 },
+          data: {
+            label: 'Start',
+            type: 'Start',
+            category: 'Entry Point',
+            onEdit: () => {}
+          },
+          sourcePosition: Position.Right,
+          targetPosition: Position.Left,
+          draggable: true,
+        },
+        {
+          id: 'node-2',
+          type: 'custom',
+          position: { x: 300, y: 100 },
+          data: {
+            label: 'Process',
+            type: 'Agent',
+            category: 'Processing',
+            onEdit: () => {}
+          },
+          sourcePosition: Position.Right,
+          targetPosition: Position.Left,
+          draggable: true,
+        }
+      ];
+      
+      const defaultEdges = [
+        {
+          id: 'edge-1',
+          source: 'node-1',
+          target: 'node-2',
+          type: 'smoothstep',
+          animated: false,
+          style: { 
+            stroke: '#ffffff', 
+            strokeWidth: 2,
+            filter: 'drop-shadow(0 0 3px rgba(255,255,255,0.5))'
+          },
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            color: '#ffffff',
+            width: 15,
+            height: 15,
+          },
+          selectable: true,
+          updatable: true,
+          deletable: true,
+          className: 'transition-all duration-200',
+        }
+      ];
+      
+      setNodes(defaultNodes);
+      setEdges(defaultEdges);
     }
   }, [workflow.flowData, onEditNode]);
+
+  // Debug: Log current state
+  useEffect(() => {
+    console.log('🎯 Current nodes state:', nodes.length, nodes);
+    console.log('🔗 Current edges state:', edges.length, edges);
+  }, [nodes, edges]);
+
+  // Handle node position changes to persist them
+  const onNodesChangeHandler = useCallback(
+    (changes) => {
+      console.log('🔄 Nodes changed:', changes);
+      onNodesChange(changes);
+      
+      // Log position changes specifically
+      changes.forEach(change => {
+        if (change.type === 'position' && change.position) {
+          console.log(`📍 Node ${change.id} moved to:`, change.position);
+        }
+      });
+    },
+    [onNodesChange]
+  );
+
+  // Handle edges changes
+  const onEdgesChangeHandler = useCallback(
+    (changes) => {
+      console.log('🔄 Edges changed:', changes);
+      onEdgesChange(changes);
+    },
+    [onEdgesChange]
+  );
 
   // Handle node click
   const onNodeClickHandler = useCallback((event: React.MouseEvent, node: Node) => {
@@ -425,8 +572,8 @@ export default function ReactFlowCanvas({
           <ReactFlow
             nodes={nodes}
             edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
+            onNodesChange={onNodesChangeHandler}
+            onEdgesChange={onEdgesChangeHandler}
             onNodeClick={onNodeClickHandler}
             onConnect={onConnect}
             onInit={onInit}
