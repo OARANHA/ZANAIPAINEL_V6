@@ -282,6 +282,34 @@ export default function FlowiseWorkflowManager() {
     }
   };
 
+  const handleWorkflowSelect = (workflow: FlowiseWorkflow) => {
+    // Validate workflow before selection
+    if (!workflow.id || !workflow.name) {
+      toast({
+        title: "Workflow inválido",
+        description: "O workflow selecionado possui dados incompletos.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (workflow.complexityScore > 50) {
+      const confirmSelect = confirm(
+        `Este workflow tem alta complexidade (${workflow.complexityScore}). Deseja continuar com a seleção?`
+      );
+      if (!confirmSelect) return;
+    }
+    
+    // Here you can add logic to handle the selected workflow
+    // For example, navigate to an edit page or open a modal
+    toast({
+      title: "Workflow Selecionado",
+      description: `O workflow "${workflow.name}" foi selecionado com sucesso.`,
+    });
+    
+    console.log('Workflow selecionado:', workflow);
+  };
+
   const syncWithFlowise = async () => {
     setSyncing(true);
     try {
@@ -1676,11 +1704,40 @@ export default function FlowiseWorkflowManager() {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <Button size="sm" variant="outline">
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // Add visualization logic here
+                          toast({
+                            title: "Visualização",
+                            description: `Visualizando workflow "${workflow.name}"`,
+                          });
+                        }}
+                      >
                         <Eye className="w-4 h-4 mr-1" />
                         Visualizar
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => openEditDialog(workflow)}>
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleWorkflowSelect(workflow);
+                        }}
+                      >
+                        <CheckCircle className="w-4 h-4 mr-1" />
+                        Selecionar
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditDialog(workflow);
+                        }}
+                      >
                         <Edit className="w-4 h-4 mr-1" />
                         Editar
                       </Button>
@@ -1695,12 +1752,12 @@ export default function FlowiseWorkflowManager() {
                           <Download className="w-4 h-4" />
                           Exportar
                         </Button>
-                        <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
+                        <div className="absolute right-0 mt-1 w-48 bg-background border border-border rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
                           <div className="py-1">
                             <button
                               onClick={() => exportToFlowise(workflow)}
                               disabled={exporting === workflow.id}
-                              className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 disabled:opacity-50 flex items-center gap-2"
+                              className="w-full text-left px-4 py-2 text-sm hover:bg-muted disabled:opacity-50 flex items-center gap-2"
                             >
                               {exporting === workflow.id ? (
                                 <RefreshCw className="w-3 h-3 animate-spin" />
@@ -1711,21 +1768,21 @@ export default function FlowiseWorkflowManager() {
                             </button>
                             <button
                               onClick={() => exportWorkflowAsJSON(workflow)}
-                              className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 flex items-center gap-2"
+                              className="w-full text-left px-4 py-2 text-sm hover:bg-muted flex items-center gap-2"
                             >
                               <FileText className="w-3 h-3" />
                               Como JSON
                             </button>
                             <button
                               onClick={() => exportWorkflowAsConfig(workflow)}
-                              className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 flex items-center gap-2"
+                              className="w-full text-left px-4 py-2 text-sm hover:bg-muted flex items-center gap-2"
                             >
                               <Code className="w-3 h-3" />
                               Configuração
                             </button>
                             <button
                               onClick={() => copyWorkflowIdToClipboard(workflow)}
-                              className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 flex items-center gap-2"
+                              className="w-full text-left px-4 py-2 text-sm hover:bg-muted flex items-center gap-2"
                             >
                               <Copy className="w-3 h-3" />
                               Copiar ID
@@ -1737,8 +1794,11 @@ export default function FlowiseWorkflowManager() {
                       <Button 
                         size="sm" 
                         variant="outline" 
-                        className="text-red-600 hover:text-red-700"
-                        onClick={() => deleteWorkflow(workflow)}
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteWorkflow(workflow);
+                        }}
                       >
                         <Trash2 className="w-4 h-4 mr-1" />
                         Excluir
