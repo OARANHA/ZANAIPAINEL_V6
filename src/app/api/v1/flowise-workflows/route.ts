@@ -313,10 +313,64 @@ async function getWorkflows({ filters = {}, page = 1, limit = 20, includeAgents 
     
     // Se solicitado, buscar também agentes para exportação
     if (includeAgents && (!filters.type || filters.type === 'ALL')) {
-      console.log('⚠️ Transformação de agentes temporariamente desabilitada');
-      // TEMPORÁRIO: Desabilitar completamente a transformação de agentes
-      // para evitar travamento do sistema
-      console.log('📋 Transformação de agentes desabilitada temporariamente para estabilidade do sistema');
+      console.log('🔄 Buscando agentes para transformação em workflows...');
+      
+      try {
+        // Buscar agentes ativos que podem ser transformados
+        const agentWhere: any = { status: 'active' };
+        if (filters.workspaceId) agentWhere.workspaceId = filters.workspaceId;
+        
+        const availableAgents = await db.agent.findMany({
+          where: agentWhere,
+          include: { workspace: true },
+          orderBy: { createdAt: 'desc' }
+        });
+        
+        // Transformar agentes em workflows
+        for (const agent of availableAgents) {
+          try {
+            const transformedWorkflow = await transformAgentToFlowiseWorkflow({
+              id: agent.id,
+              name: agent.name,
+              slug: agent.slug,
+              description: agent.description,
+              type: agent.type,
+              config: agent.config || '',
+              knowledge: agent.knowledge || '',
+              roleDefinition: agent.description || `Você é um agente especialista chamado ${agent.name}`,
+              customInstructions: agent.config || '',
+              workspaceId: agent.workspaceId,
+              groups: [],
+              category: 'transformed',
+              capabilities: extractAgentCapabilities(agent.config)
+            });
+            
+            // Adicionar à lista de workflows
+            allWorkflows.push({
+              ...transformedWorkflow,
+              id: `agent_${agent.id}`,
+              flowiseId: `agent_${agent.id}`,
+              category: 'transformed',
+              sourceType: 'agent',
+              sourceId: agent.id,
+              createdAt: agent.createdAt,
+              updatedAt: agent.updatedAt
+            });
+            
+            agents.push(agent);
+            
+          } catch (transformError) {
+            console.warn(`⚠️ Erro ao transformar agente ${agent.name}:`, transformError);
+            // Continuar com outros agentes mesmo se um falhar
+          }
+        }
+        
+        console.log(`✅ Transformados ${agents.length} agentes em workflows com sucesso`);
+        
+      } catch (error) {
+        console.error('❌ Erro ao buscar e transformar agentes:', error);
+        // Não falhar a requisição inteira se a transformação de agentes falhar
+      }
     }
 
     // Calcular paginação considerando workflows transformados
@@ -1076,4 +1130,78 @@ async function debugWorkflow({ flowiseId }: { flowiseId: string }) {
       { status: 500 }
     );
   }
+}
+
+// Função para extrair capacidades do agente baseado na configuração
+function extractAgentCapabilities(config: string): string[] {
+  const capabilities: string[] = [];
+  
+  try {
+    // Tentar fazer parse como JSON
+    const configData = typeof config === 'string' ? JSON.parse(config) : config;
+    
+    // Verificar capacidades baseadas na configuração
+    if (configData.model || configData.modelName) {
+      capabilities.push('llm');
+    }
+    
+    if (configData.tools && configData.tools.length > 0) {
+      capabilities.push('function_calling');
+    }
+    
+    if (configData.temperature !== undefined) {
+      capabilities.push('temperature_control');
+    }
+    
+    if (configData.maxTokens) {
+      capabilities.push('token_limit');
+    }
+    
+    if (configData.systemPrompt || configData.prompt) {
+      capabilities.push('custom_prompt');
+    }
+    
+    // Verificar capacidades baseadas em texto se não for JSON
+    if (typeof config === 'string') {
+      const configText = config.toLowerCase();
+      
+      if (configText.includes('tool') || configText.includes('function')) {
+        capabilities.push('function_calling');
+      }
+      
+      if (configText.includes('memory') || configText.includes('context')) {
+        capabilities.push('memory');
+      }
+      
+      if (configText.includes('stream')) {
+        capabilities.push('streaming');
+      }
+      
+      if (configText.includes('api') || configText.includes('http')) {
+        capabilities.push('api_integration');
+      }
+      
+      if (configText.includes('file') || configText.includes('upload')) {
+        capabilities.push('file_handling');
+      }
+    }
+    
+  } catch (error) {
+    // Se não for JSON, analisar como texto
+    const configText = config.toLowerCase();
+    
+    if (configText.includes('model') || configText.includes('llm')) {
+      capabilities.push('llm');
+    }
+    
+    if (configText.includes('tool') || configText.includes('function')) {
+      capabilities.push('function_calling');
+    }
+    
+    if (configText.includes('memory') || configText.includes('context')) {
+      capabilities.push('memory');
+    }
+  }
+  
+  return capabilities;
 }

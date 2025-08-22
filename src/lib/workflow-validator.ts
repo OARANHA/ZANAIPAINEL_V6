@@ -1,530 +1,888 @@
-export interface ValidationError {
-  type: 'error' | 'warning' | 'info';
-  message: string;
-  nodeId?: string;
-  edgeId?: string;
-  severity: 'high' | 'medium' | 'low';
-}
+/**
+ * Serviço para preview e validação de workflows
+ * Fornece análise detalhada de workflows, detecção de problemas e sugestões de otimização
+ */
+
+import { FlowiseNode, FlowiseEdge } from './agent-to-flowise-transformer';
 
 export interface ValidationResult {
-  isValid: boolean;
+  valid: boolean;
   errors: ValidationError[];
-  warnings: ValidationError[];
-  info: ValidationError[];
-  score: number; // 0-100 validation score
+  warnings: ValidationWarning[];
+  suggestions: OptimizationSuggestion[];
+  score: number; // 0-100
+  metrics: WorkflowMetrics;
+}
+
+export interface ValidationError {
+  id: string;
+  type: 'critical' | 'error' | 'warning';
+  nodeId?: string;
+  edgeId?: string;
+  message: string;
+  description: string;
+  fix?: string;
+}
+
+export interface ValidationWarning {
+  id: string;
+  nodeId?: string;
+  message: string;
+  description: string;
+  suggestion: string;
+}
+
+export interface OptimizationSuggestion {
+  id: string;
+  type: 'performance' | 'structure' | 'configuration' | 'cost';
+  priority: 'low' | 'medium' | 'high';
+  targetNodes?: string[];
+  message: string;
+  description: string;
+  impact: string;
+  implementation: string;
+}
+
+export interface WorkflowMetrics {
+  nodeCount: number;
+  edgeCount: number;
+  maxDepth: number;
+  parallelPaths: number;
+  criticalPathLength: number;
+  complexityScore: number;
+  estimatedExecutionTime: string;
+  memoryUsage: 'low' | 'medium' | 'high';
+  costEstimate: 'low' | 'medium' | 'high';
+}
+
+export interface WorkflowPreview {
+  nodes: PreviewNode[];
+  edges: PreviewEdge[];
+  flow: FlowPath[];
+  metrics: WorkflowMetrics;
+  validation: ValidationResult;
+}
+
+export interface PreviewNode {
+  id: string;
+  name: string;
+  type: string;
+  category: string;
+  position: { x: number; y: number };
+  status: 'valid' | 'warning' | 'error';
+  inputs: Record<string, any>;
+  outputs: Record<string, any>;
+  connections: { incoming: number; outgoing: number };
+  executionTime?: string;
+  cost?: string;
+}
+
+export interface PreviewEdge {
+  id: string;
+  source: string;
+  target: string;
+  sourceHandle: string;
+  targetHandle: string;
+  status: 'valid' | 'warning' | 'error';
+  dataFlow?: string;
+}
+
+export interface FlowPath {
+  id: string;
+  nodes: string[];
+  edges: string[];
+  type: 'main' | 'alternative' | 'error';
+  description: string;
+  executionOrder: number;
 }
 
 export class WorkflowValidator {
-  // Validate a complete workflow
-  static validateWorkflow(nodes: any[], edges: any[]): ValidationResult {
-    const errors: ValidationError[] = [];
-    const warnings: ValidationError[] = [];
-    const info: ValidationError[] = [];
-
-    // Basic structural validation
-    this.validateStructure(nodes, edges, errors, warnings, info);
+  
+  /**
+   * Valida um workflow completo e gera preview
+   */
+  async validateAndPreview(
+    nodes: FlowiseNode[],
+    edges: FlowiseEdge[],
+    options: {
+      strictMode?: boolean;
+      includePerformanceAnalysis?: boolean;
+      includeCostAnalysis?: boolean;
+    } = {}
+  ): Promise<WorkflowPreview> {
     
-    // Node-specific validation
-    this.validateNodes(nodes, errors, warnings, info);
-    
-    // Connection validation
-    this.validateConnections(nodes, edges, errors, warnings, info);
-    
-    // Workflow logic validation
-    this.validateWorkflowLogic(nodes, edges, errors, warnings, info);
+    console.log('🔍 Iniciando validação e preview do workflow:', {
+      nodeCount: nodes.length,
+      edgeCount: edges.length,
+      options
+    });
 
-    // Calculate validation score
-    const score = this.calculateValidationScore(errors, warnings, info);
+    try {
+      // 1. Validar estrutura básica
+      const structureValidation = this.validateStructure(nodes, edges);
+      
+      // 2. Analisar conexões e fluxo
+      const flowAnalysis = this.analyzeFlow(nodes, edges);
+      
+      // 3. Validar configurações dos nós
+      const nodeValidation = this.validateNodeConfigurations(nodes);
+      
+      // 4. Calcular métricas
+      const metrics = this.calculateMetrics(nodes, edges, flowAnalysis);
+      
+      // 5. Gerar sugestões de otimização
+      const suggestions = this.generateOptimizationSuggestions(nodes, edges, metrics);
+      
+      // 6. Analisar performance se solicitado
+      let performanceAnalysis = {};
+      if (options.includePerformanceAnalysis) {
+        performanceAnalysis = this.analyzePerformance(nodes, edges);
+      }
+      
+      // 7. Analisar custos se solicitado
+      let costAnalysis = {};
+      if (options.includeCostAnalysis) {
+        costAnalysis = this.analyzeCosts(nodes);
+      }
 
-    return {
-      isValid: errors.length === 0,
-      errors,
-      warnings,
-      info,
-      score
-    };
+      // Combinar todos os resultados
+      const errors = [...structureValidation.errors, ...nodeValidation.errors];
+      const warnings = [...structureValidation.warnings, ...nodeValidation.warnings];
+      
+      const validation: ValidationResult = {
+        valid: errors.length === 0,
+        errors,
+        warnings,
+        suggestions,
+        score: this.calculateValidationScore(errors, warnings, metrics),
+        metrics: {
+          ...metrics,
+          ...performanceAnalysis,
+          ...costAnalysis
+        }
+      };
+
+      // Gerar preview
+      const preview = this.generatePreview(nodes, edges, validation, flowAnalysis);
+
+      console.log('✅ Validação concluída:', {
+        valid: validation.valid,
+        errorsCount: errors.length,
+        warningsCount: warnings.length,
+        suggestionsCount: suggestions.length,
+        score: validation.score
+      });
+
+      return preview;
+
+    } catch (error) {
+      console.error('❌ Erro durante validação:', error);
+      throw new Error(`Falha na validação do workflow: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+    }
   }
 
-  // Validate basic workflow structure
-  private static validateStructure(
-    nodes: any[], 
-    edges: any[], 
-    errors: ValidationError[], 
-    warnings: ValidationError[], 
-    info: ValidationError[]
-  ) {
-    // Check for empty workflow
-    if (nodes.length === 0) {
-      errors.push({
-        type: 'error',
-        message: 'Workflow não contém nós',
-        severity: 'high'
-      });
-      return;
-    }
+  /**
+   * Valida a estrutura básica do workflow
+   */
+  private validateStructure(nodes: FlowiseNode[], edges: FlowiseEdge[]): {
+    errors: ValidationError[];
+    warnings: ValidationWarning[];
+  } {
+    
+    const errors: ValidationError[] = [];
+    const warnings: ValidationWarning[] = [];
 
-    // Check for disconnected nodes
-    const connectedNodes = new Set();
+    // Verificar nós duplicados
+    const nodeIds = new Set<string>();
+    nodes.forEach(node => {
+      if (nodeIds.has(node.id)) {
+        errors.push({
+          id: `duplicate_node_${node.id}`,
+          type: 'critical',
+          nodeId: node.id,
+          message: 'Nó duplicado encontrado',
+          description: `O nó com ID "${node.id}" aparece múltiplas vezes no workflow.`,
+          fix: 'Remova ou renomeie um dos nós duplicados.'
+        });
+      }
+      nodeIds.add(node.id);
+    });
+
+    // Verificar conexões inválidas
+    edges.forEach(edge => {
+      if (!nodeIds.has(edge.source)) {
+        errors.push({
+          id: `invalid_source_${edge.id}`,
+          type: 'error',
+          edgeId: edge.id,
+          message: 'Nó de origem não encontrado',
+          description: `A conexão "${edge.id}" referencia um nó de origem inexistente: "${edge.source}".`,
+          fix: 'Verifique se o nó de origem existe ou remova esta conexão.'
+        });
+      }
+      
+      if (!nodeIds.has(edge.target)) {
+        errors.push({
+          id: `invalid_target_${edge.id}`,
+          type: 'error',
+          edgeId: edge.id,
+          message: 'Nó de destino não encontrado',
+          description: `A conexão "${edge.id}" referencia um nó de destino inexistente: "${edge.target}".`,
+          fix: 'Verifique se o nó de destino existe ou remova esta conexão.'
+        });
+      }
+    });
+
+    // Verificar nós isolados
+    const connectedNodes = new Set<string>();
     edges.forEach(edge => {
       connectedNodes.add(edge.source);
       connectedNodes.add(edge.target);
     });
 
     nodes.forEach(node => {
-      if (!connectedNodes.has(node.id) && node.data?.type !== 'Start') {
+      if (!connectedNodes.has(node.id)) {
         warnings.push({
-          type: 'warning',
-          message: `Nó "${node.data?.label || node.id}" está desconectado`,
+          id: `isolated_node_${node.id}`,
           nodeId: node.id,
-          severity: 'medium'
+          message: 'Nó isolado detectado',
+          description: `O nó "${node.data.name}" não está conectado a nenhum outro nó.`,
+          suggestion: 'Conecte este nó ao fluxo principal ou remova-o se não for necessário.'
         });
       }
     });
 
-    // Check for missing start node
-    const hasStartNode = nodes.some(n => n.data?.type === 'Start');
-    if (!hasStartNode) {
+    // Verificar ciclos
+    const cycles = this.detectCycles(nodes, edges);
+    cycles.forEach((cycle, index) => {
       errors.push({
+        id: `cycle_${index}`,
         type: 'error',
-        message: 'Workflow não tem nó de início (Start)',
-        severity: 'high'
+        message: 'Ciclo detectado no workflow',
+        description: `Foi detectado um ciclo que pode causar execução infinita: ${cycle.join(' → ')}.`,
+        fix: 'Quebre o ciclo adicionando um nó de condição ou removendo uma das conexões.'
       });
-    }
+    });
 
-    // Check for isolated nodes (no connections)
-    const isolatedNodes = nodes.filter(node => 
-      !edges.some(edge => edge.source === node.id || edge.target === node.id)
-    );
-    
-    if (isolatedNodes.length > 1) {
-      warnings.push({
-        type: 'warning',
-        message: `${isolatedNodes.length} nós estão isolados`,
-        severity: 'medium'
-      });
-    }
+    return { errors, warnings };
   }
 
-  // Validate individual nodes
-  private static validateNodes(
-    nodes: any[], 
-    errors: ValidationError[], 
-    warnings: ValidationError[], 
-    info: ValidationError[]
-  ) {
-    nodes.forEach(node => {
-      // Validate required node properties
-      if (!node.data?.label || node.data.label.trim() === '') {
-        errors.push({
-          type: 'error',
-          message: `Nó ${node.id} não tem rótulo`,
-          nodeId: node.id,
-          severity: 'high'
-        });
-      }
+  /**
+   * Analisa o fluxo do workflow
+   */
+  private analyzeFlow(nodes: FlowiseNode[], edges: FlowiseEdge[]) {
+    const graph = this.buildGraph(nodes, edges);
+    const paths = this.findAllPaths(graph);
+    const criticalPath = this.findCriticalPath(paths, nodes);
+    
+    return {
+      graph,
+      paths,
+      criticalPath,
+      maxDepth: this.calculateMaxDepth(graph),
+      parallelPaths: this.countParallelPaths(paths)
+    };
+  }
 
-      // Validate node-specific requirements
-      switch (node.data?.type) {
+  /**
+   * Valida configurações específicas dos nós
+   */
+  private validateNodeConfigurations(nodes: FlowiseNode[]): {
+    errors: ValidationError[];
+    warnings: ValidationWarning[];
+  } {
+    
+    const errors: ValidationError[] = [];
+    const warnings: ValidationWarning[] = [];
+
+    nodes.forEach(node => {
+      const category = node.data.category;
+      const inputs = node.data.inputs || {};
+
+      // Validações específicas por categoria
+      switch (category) {
+        case 'Chat Models':
+          if (!inputs.modelName) {
+            errors.push({
+              id: `missing_model_${node.id}`,
+              type: 'error',
+              nodeId: node.id,
+              message: 'Modelo não configurado',
+              description: `O nó "${node.data.name}" não tem um modelo de linguagem configurado.`,
+              fix: 'Selecione um modelo válido nas configurações do nó.'
+            });
+          }
+          
+          if (inputs.temperature !== undefined && (inputs.temperature < 0 || inputs.temperature > 2)) {
+            warnings.push({
+              id: `invalid_temperature_${node.id}`,
+              nodeId: node.id,
+              message: 'Temperatura fora do range recomendado',
+              description: `A temperatura ${inputs.temperature} está fora do range recomendado (0-1).`,
+              suggestion: 'Ajuste a temperatura para um valor entre 0 e 1 para melhores resultados.'
+            });
+          }
+          break;
+
         case 'LLM':
-          this.validateLLMNode(node, errors, warnings);
+          if (!inputs.llmModel) {
+            errors.push({
+              id: `missing_llm_model_${node.id}`,
+              type: 'error',
+              nodeId: node.id,
+              message: 'Modelo LLM não configurado',
+              description: `O nó "${node.data.name}" não tem um modelo LLM configurado.`,
+              fix: 'Selecione um modelo LLM válido nas configurações do nó.'
+            });
+          }
           break;
-        case 'Agent':
-          this.validateAgentNode(node, errors, warnings);
+
+        case 'Prompts':
+          if (!inputs.template || inputs.template.trim().length === 0) {
+            errors.push({
+              id: `empty_template_${node.id}`,
+              type: 'error',
+              nodeId: node.id,
+              message: 'Template vazio',
+              description: `O nó "${node.data.name}" tem um template vazio.`,
+              fix: 'Preencha o template com um prompt válido.'
+            });
+          }
           break;
-        case 'API':
-          this.validateAPINode(node, errors, warnings);
+
+        case 'Memory':
+          if (inputs.bufferSize !== undefined && inputs.bufferSize > 100) {
+            warnings.push({
+              id: `large_buffer_${node.id}`,
+              nodeId: node.id,
+              message: 'Buffer de memória muito grande',
+              description: `O buffer de tamanho ${inputs.bufferSize} pode consumir muita memória.`,
+              suggestion: 'Considere reduzir o tamanho do buffer para melhor performance.'
+            });
+          }
           break;
-        case 'Condition':
-          this.validateConditionNode(node, errors, warnings);
-          break;
-        case 'Document':
-          this.validateDocumentNode(node, errors, warnings);
+
+        case 'Document Stores':
+          if (!inputs.documentStore) {
+            warnings.push({
+              id: `missing_document_store_${node.id}`,
+              nodeId: node.id,
+              message: 'Document store não selecionado',
+              description: `O nó "${node.data.name}" não tem um document store configurado.`,
+              suggestion: 'Selecione um document store para habilitar a busca de documentos.'
+            });
+          }
           break;
       }
-    });
-  }
 
-  // Validate LLM nodes
-  private static validateLLMNode(node: any, errors: ValidationError[], warnings: ValidationError[]) {
-    if (!node.data?.model) {
-      warnings.push({
-        type: 'warning',
-        message: `Nó LLM "${node.data?.label}" não tem modelo especificado`,
-        nodeId: node.id,
-        severity: 'medium'
-      });
-    }
-
-    if (!node.data?.prompt || node.data.prompt.trim() === '') {
-      errors.push({
-        type: 'error',
-        message: `Nó LLM "${node.data?.label}" não tem prompt`,
-        nodeId: node.id,
-        severity: 'high'
-      });
-    }
-
-    if (node.data?.prompt && node.data.prompt.length > 2000) {
-      warnings.push({
-        type: 'warning',
-        message: `Prompt do nó "${node.data?.label}" é muito longo (>2000 caracteres)`,
-        nodeId: node.id,
-        severity: 'low'
-      });
-    }
-  }
-
-  // Validate Agent nodes
-  private static validateAgentNode(node: any, errors: ValidationError[], warnings: ValidationError[]) {
-    if (!node.data?.agentType) {
-      warnings.push({
-        type: 'warning',
-        message: `Nó Agent "${node.data?.label}" não tem tipo de agente especificado`,
-        nodeId: node.id,
-        severity: 'medium'
-      });
-    }
-
-    if (!node.data?.instructions || node.data.instructions.trim() === '') {
-      errors.push({
-        type: 'error',
-        message: `Nó Agent "${node.data?.label}" não tem instruções`,
-        nodeId: node.id,
-        severity: 'high'
-      });
-    }
-  }
-
-  // Validate API nodes
-  private static validateAPINode(node: any, errors: ValidationError[], warnings: ValidationError[]) {
-    if (!node.data?.url) {
-      errors.push({
-        type: 'error',
-        message: `Nó API "${node.data?.label}" não tem URL`,
-        nodeId: node.id,
-        severity: 'high'
-      });
-    }
-
-    if (node.data?.url && !this.isValidURL(node.data.url)) {
-      errors.push({
-        type: 'error',
-        message: `URL do nó "${node.data?.label}" é inválida`,
-        nodeId: node.id,
-        severity: 'high'
-      });
-    }
-
-    if (!node.data?.method) {
-      warnings.push({
-        type: 'warning',
-        message: `Nó API "${node.data?.label}" não tem método HTTP especificado`,
-        nodeId: node.id,
-        severity: 'medium'
-      });
-    }
-  }
-
-  // Validate Condition nodes
-  private static validateConditionNode(node: any, errors: ValidationError[], warnings: ValidationError[]) {
-    if (!node.data?.condition) {
-      errors.push({
-        type: 'error',
-        message: `Nó Condition "${node.data?.label}" não tem condição definida`,
-        nodeId: node.id,
-        severity: 'high'
-      });
-    }
-
-    if (node.data?.condition && !this.isValidCondition(node.data.condition)) {
-      errors.push({
-        type: 'error',
-        message: `Condição do nó "${node.data?.label}" é inválida`,
-        nodeId: node.id,
-        severity: 'high'
-      });
-    }
-  }
-
-  // Validate Document nodes
-  private static validateDocumentNode(node: any, errors: ValidationError[], warnings: ValidationError[]) {
-    if (!node.data?.documentType) {
-      warnings.push({
-        type: 'warning',
-        message: `Nó Document "${node.data?.label}" não tem tipo de documento especificado`,
-        nodeId: node.id,
-        severity: 'medium'
-      });
-    }
-
-    if (!node.data?.content || node.data.content.trim() === '') {
-      warnings.push({
-        type: 'warning',
-        message: `Nó Document "${node.data?.label}" não tem conteúdo`,
-        nodeId: node.id,
-        severity: 'medium'
-      });
-    }
-  }
-
-  // Validate connections between nodes
-  private static validateConnections(
-    nodes: any[], 
-    edges: any[], 
-    errors: ValidationError[], 
-    warnings: ValidationError[], 
-    info: ValidationError[]
-  ) {
-    // Check for duplicate connections
-    const connectionMap = new Set();
-    edges.forEach((edge, index) => {
-      const connectionKey = `${edge.source}-${edge.target}`;
-      if (connectionMap.has(connectionKey)) {
-        errors.push({
-          type: 'error',
-          message: `Conexão duplicada entre ${edge.source} e ${edge.target}`,
-          edgeId: `edge_${index}`,
-          severity: 'high'
-        });
-      }
-      connectionMap.add(connectionKey);
-    });
-
-    // Check for self-connections
-    edges.forEach((edge, index) => {
-      if (edge.source === edge.target) {
-        errors.push({
-          type: 'error',
-          message: `Nó ${edge.source} está conectado a si mesmo`,
-          edgeId: `edge_${index}`,
-          severity: 'high'
+      // Validações genéricas
+      if (node.data.inputParams) {
+        node.data.inputParams.forEach(param => {
+          if (!param.optional && inputs[param.name] === undefined) {
+            errors.push({
+              id: `missing_required_param_${node.id}_${param.name}`,
+              type: 'error',
+              nodeId: node.id,
+              message: `Parâmetro obrigatório ausente`,
+              description: `O parâmetro "${param.label}" é obrigatório mas não está configurado.`,
+              fix: `Preencha o valor para "${param.label}" nas configurações do nó.`
+            });
+          }
         });
       }
     });
 
-    // Check for circular dependencies
-    if (this.hasCircularDependencies(nodes, edges)) {
-      errors.push({
-        type: 'error',
-        message: 'Workflow contém dependências circulares',
-        severity: 'high'
-      });
-    }
-
-    // Check for connection limits
-    const connectionCounts = new Map<string, number>();
-    edges.forEach(edge => {
-      connectionCounts.set(edge.source, (connectionCounts.get(edge.source) || 0) + 1);
-      connectionCounts.set(edge.target, (connectionCounts.get(edge.target) || 0) + 1);
-    });
-
-    connectionCounts.forEach((count, nodeId) => {
-      if (count > 5) {
-        warnings.push({
-          type: 'warning',
-          message: `Nó ${nodeId} tem muitas conexões (${count})`,
-          nodeId: nodeId,
-          severity: 'medium'
-        });
-      }
-    });
+    return { errors, warnings };
   }
 
-  // Validate workflow logic
-  private static validateWorkflowLogic(
-    nodes: any[], 
-    edges: any[], 
-    errors: ValidationError[], 
-    warnings: ValidationError[], 
-    info: ValidationError[]
-  ) {
-    // Check for unreachable nodes
-    const startNodes = nodes.filter(n => n.data?.type === 'Start');
-    if (startNodes.length > 0) {
-      const reachableNodes = this.getReachableNodes(startNodes[0].id, edges);
-      const unreachableNodes = nodes.filter(n => 
-        n.id !== startNodes[0].id && !reachableNodes.has(n.id)
-      );
-
-      if (unreachableNodes.length > 0) {
-        warnings.push({
-          type: 'warning',
-          message: `${unreachableNodes.length} nós não são alcançáveis a partir do nó inicial`,
-          severity: 'medium'
-        });
-      }
-    }
-
-    // Check for dead ends
-    const endNodes = nodes.filter(node => 
-      !edges.some(edge => edge.source === node.id)
-    );
-
-    if (endNodes.length > 1) {
-      info.push({
-        type: 'info',
-        message: `Workflow tem ${endNodes.length} pontos finais`,
-        severity: 'low'
-      });
-    }
-
-    // Check for potential performance issues
-    const llmNodes = nodes.filter(n => n.data?.type === 'LLM');
-    if (llmNodes.length > 3) {
-      warnings.push({
-        type: 'warning',
-        message: `Workflow contém muitos nós LLM (${llmNodes.length}) - pode impactar performance`,
-        severity: 'medium'
-      });
-    }
-
-    // Check for missing error handling
-    const hasErrorHandling = nodes.some(n => 
-      n.data?.type === 'Condition' && 
-      n.data?.label?.toLowerCase().includes('error')
-    );
-
-    if (!hasErrorHandling && nodes.length > 3) {
-      warnings.push({
-        type: 'warning',
-        message: 'Workflow não tem tratamento de erros',
-        severity: 'medium'
-      });
-    }
-  }
-
-  // Helper methods
-  private static isValidURL(url: string): boolean {
-    try {
-      new URL(url);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  private static isValidCondition(condition: string): boolean {
-    // Basic condition validation - can be enhanced
-    return condition.trim().length > 0;
-  }
-
-  private static hasCircularDependencies(nodes: any[], edges: any[]): boolean {
-    // Simple circular dependency detection
-    const graph = new Map<string, string[]>();
+  /**
+   * Calcula métricas do workflow
+   */
+  private calculateMetrics(
+    nodes: FlowiseNode[], 
+    edges: FlowiseEdge[], 
+    flowAnalysis: any
+  ): WorkflowMetrics {
     
-    // Build adjacency list
+    const complexityScore = this.calculateComplexityScore(nodes, edges, flowAnalysis);
+    
+    return {
+      nodeCount: nodes.length,
+      edgeCount: edges.length,
+      maxDepth: flowAnalysis.maxDepth,
+      parallelPaths: flowAnalysis.parallelPaths,
+      criticalPathLength: flowAnalysis.criticalPath?.length || 0,
+      complexityScore,
+      estimatedExecutionTime: this.estimateExecutionTime(nodes, complexityScore),
+      memoryUsage: this.estimateMemoryUsage(nodes, complexityScore),
+      costEstimate: this.estimateCost(nodes, complexityScore)
+    };
+  }
+
+  /**
+   * Gera sugestões de otimização
+   */
+  private generateOptimizationSuggestions(
+    nodes: FlowiseNode[],
+    edges: FlowiseEdge[],
+    metrics: WorkflowMetrics
+  ): OptimizationSuggestion[] {
+    
+    const suggestions: OptimizationSuggestion[] = [];
+
+    // Sugestões baseadas em complexidade
+    if (metrics.complexityScore > 80) {
+      suggestions.push({
+        id: 'complexity_reduction',
+        type: 'structure',
+        priority: 'high',
+        targetNodes: nodes.map(n => n.id),
+        message: 'Workflow muito complexo',
+        description: 'O workflow tem alta complexidade o que pode afetar a performance e manutenibilidade.',
+        impact: 'Redução significativa do tempo de execução e melhora na manutenibilidade.',
+        implementation: 'Divida o workflow em sub-workflows menores ou remova nós desnecessários.'
+      });
+    }
+
+    // Sugestões baseadas em nós de Chat Model
+    const chatModels = nodes.filter(n => n.data.category === 'Chat Models');
+    chatModels.forEach(node => {
+      const inputs = node.data.inputs || {};
+      if (inputs.modelName === 'gpt-4' && inputs.temperature > 0.5) {
+        suggestions.push({
+          id: `model_optimization_${node.id}`,
+          type: 'cost',
+          priority: 'medium',
+          targetNodes: [node.id],
+          message: 'Oportunidade de otimização de custo',
+          description: `O nó "${node.data.name}" usa GPT-4 com alta temperatura.`,
+          impact: 'Redução de custos mantendo a qualidade.',
+          implementation: 'Considere usar GPT-3.5-turbo ou reduzir a temperatura para tarefas menos complexas.'
+        });
+      }
+    });
+
+    // Sugestões baseadas em memória
+    const memoryNodes = nodes.filter(n => n.data.category === 'Memory');
+    if (memoryNodes.length > 3) {
+      suggestions.push({
+        id: 'memory_optimization',
+        type: 'performance',
+        priority: 'medium',
+        targetNodes: memoryNodes.map(n => n.id),
+        message: 'Múltiplos nós de memória detectados',
+        description: 'Vários nós de memória podem causar redundância e aumentar o uso de memória.',
+        impact: 'Melhora na performance e redução do uso de memória.',
+        implementation: 'Consolide os nós de memória ou use um único nó com configuração adequada.'
+      });
+    }
+
+    // Sugestões baseadas em conexões
+    if (edges.length > nodes.length * 2) {
+      suggestions.push({
+        id: 'connection_optimization',
+        type: 'structure',
+        priority: 'low',
+        message: 'Muitas conexões detectadas',
+        description: 'O workflow tem mais conexões que o dobro de nós, o que pode indicar complexidade desnecessária.',
+        impact: 'Simplificação do fluxo e melhor compreensão.',
+        implementation: 'Revise as conexões e remova as que não são essenciais.'
+      });
+    }
+
+    return suggestions;
+  }
+
+  /**
+   * Gera o preview do workflow
+   */
+  private generatePreview(
+    nodes: FlowiseNode[],
+    edges: FlowiseEdge[],
+    validation: ValidationResult,
+    flowAnalysis: any
+  ): WorkflowPreview {
+    
+    const previewNodes: PreviewNode[] = nodes.map(node => {
+      const nodeErrors = validation.errors.filter(e => e.nodeId === node.id);
+      const nodeWarnings = validation.warnings.filter(w => w.nodeId === node.id);
+      
+      let status: 'valid' | 'warning' | 'error' = 'valid';
+      if (nodeErrors.length > 0) status = 'error';
+      else if (nodeWarnings.length > 0) status = 'warning';
+
+      const incomingConnections = edges.filter(e => e.target === node.id).length;
+      const outgoingConnections = edges.filter(e => e.source === node.id).length;
+
+      return {
+        id: node.id,
+        name: node.data.name,
+        type: node.data.type,
+        category: node.data.category,
+        position: node.position,
+        status,
+        inputs: node.data.inputs || {},
+        outputs: node.data.outputs || {},
+        connections: {
+          incoming: incomingConnections,
+          outgoing: outgoingConnections
+        },
+        executionTime: this.estimateNodeExecutionTime(node),
+        cost: this.estimateNodeCost(node)
+      };
+    });
+
+    const previewEdges: PreviewEdge[] = edges.map(edge => {
+      const edgeErrors = validation.errors.filter(e => e.edgeId === edge.id);
+      
+      let status: 'valid' | 'warning' | 'error' = 'valid';
+      if (edgeErrors.length > 0) status = 'error';
+
+      return {
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        sourceHandle: edge.sourceHandle,
+        targetHandle: edge.targetHandle,
+        status,
+        dataFlow: this.inferDataFlow(edge, previewNodes)
+      };
+    });
+
+    const flowPaths: FlowPath[] = flowAnalysis.paths.map((path: any, index: number) => ({
+      id: `path_${index}`,
+      nodes: path.nodes,
+      edges: path.edges,
+      type: index === 0 ? 'main' : 'alternative',
+      description: path.description || `Caminho ${index + 1}`,
+      executionOrder: index
+    }));
+
+    return {
+      nodes: previewNodes,
+      edges: previewEdges,
+      flow: flowPaths,
+      metrics: validation.metrics,
+      validation
+    };
+  }
+
+  // Métodos auxiliares
+  private buildGraph(nodes: FlowiseNode[], edges: FlowiseEdge[]) {
+    const graph: Record<string, string[]> = {};
+    
     nodes.forEach(node => {
-      graph.set(node.id, []);
+      graph[node.id] = [];
     });
-
+    
     edges.forEach(edge => {
-      const neighbors = graph.get(edge.source) || [];
-      neighbors.push(edge.target);
-      graph.set(edge.source, neighbors);
+      if (graph[edge.source]) {
+        graph[edge.source].push(edge.target);
+      }
     });
+    
+    return graph;
+  }
 
-    // Check for cycles using DFS
+  private detectCycles(nodes: FlowiseNode[], edges: FlowiseEdge[]): string[][] {
+    const graph = this.buildGraph(nodes, edges);
+    const cycles: string[][] = [];
     const visited = new Set<string>();
     const recursionStack = new Set<string>();
+    const currentPath: string[] = [];
 
-    const hasCycle = (nodeId: string): boolean => {
-      if (recursionStack.has(nodeId)) {
-        return true;
-      }
-
-      if (visited.has(nodeId)) {
-        return false;
-      }
-
+    const dfs = (nodeId: string): boolean => {
       visited.add(nodeId);
       recursionStack.add(nodeId);
+      currentPath.push(nodeId);
 
-      const neighbors = graph.get(nodeId) || [];
-      for (const neighbor of neighbors) {
-        if (hasCycle(neighbor)) {
+      for (const neighbor of graph[nodeId] || []) {
+        if (!visited.has(neighbor)) {
+          if (dfs(neighbor)) {
+            return true;
+          }
+        } else if (recursionStack.has(neighbor)) {
+          // Ciclo detectado
+          const cycleStart = currentPath.indexOf(neighbor);
+          const cycle = currentPath.slice(cycleStart);
+          cycles.push([...cycle, neighbor]);
           return true;
         }
       }
 
       recursionStack.delete(nodeId);
+      currentPath.pop();
       return false;
     };
 
-    for (const nodeId of graph.keys()) {
-      if (hasCycle(nodeId)) {
-        return true;
+    nodes.forEach(node => {
+      if (!visited.has(node.id)) {
+        dfs(node.id);
       }
-    }
+    });
 
-    return false;
+    return cycles;
   }
 
-  private static getReachableNodes(startId: string, edges: any[]): Set<string> {
-    const reachable = new Set<string>();
-    const queue = [startId];
-    const visited = new Set<string>();
+  private findAllPaths(graph: Record<string, string[]>): any[] {
+    // Implementação simplificada - encontrar todos os caminhos possíveis
+    const paths: any[] = [];
+    const startNodes = Object.keys(graph).filter(nodeId => {
+      return !Object.values(graph).some(targets => targets.includes(nodeId));
+    });
 
-    while (queue.length > 0) {
-      const currentId = queue.shift()!;
-      if (visited.has(currentId)) continue;
+    startNodes.forEach(startNode => {
+      const findPaths = (currentNode: string, currentPath: string[], visited: Set<string>) => {
+        const newPath = [...currentPath, currentNode];
+        const newVisited = new Set(visited);
+        newVisited.add(currentNode);
 
-      visited.add(currentId);
-      reachable.add(currentId);
-
-      // Find all nodes connected from current node
-      const connections = edges.filter(edge => edge.source === currentId);
-      connections.forEach(edge => {
-        if (!visited.has(edge.target)) {
-          queue.push(edge.target);
+        const neighbors = graph[currentNode] || [];
+        if (neighbors.length === 0) {
+          paths.push({
+            nodes: newPath,
+            edges: [],
+            description: `Caminho de ${startNode} para ${currentNode}`
+          });
+          return;
         }
-      });
-    }
 
-    return reachable;
+        neighbors.forEach(neighbor => {
+          if (!newVisited.has(neighbor)) {
+            findPaths(neighbor, newPath, newVisited);
+          }
+        });
+      };
+
+      findPaths(startNode, [], new Set());
+    });
+
+    return paths;
   }
 
-  private static calculateValidationScore(
-    errors: ValidationError[], 
-    warnings: ValidationError[], 
-    info: ValidationError[]
-  ): number {
+  private findCriticalPath(paths: any[], nodes: FlowiseNode[]): string[] {
+    // Simplificado - retornar o caminho mais longo
+    if (paths.length === 0) return [];
+    
+    let longestPath = paths[0];
+    paths.forEach(path => {
+      if (path.nodes.length > longestPath.nodes.length) {
+        longestPath = path;
+      }
+    });
+
+    return longestPath.nodes;
+  }
+
+  private calculateMaxDepth(graph: Record<string, string[]>): number {
+    let maxDepth = 0;
+    
+    const calculateDepth = (nodeId: string, depth: number, visited: Set<string>): number => {
+      if (visited.has(nodeId)) return depth;
+      
+      visited.add(nodeId);
+      maxDepth = Math.max(maxDepth, depth);
+      
+      const neighbors = graph[nodeId] || [];
+      neighbors.forEach(neighbor => {
+        calculateDepth(neighbor, depth + 1, visited);
+      });
+      
+      return depth;
+    };
+
+    Object.keys(graph).forEach(nodeId => {
+      calculateDepth(nodeId, 0, new Set());
+    });
+
+    return maxDepth;
+  }
+
+  private countParallelPaths(paths: any[]): number {
+    // Contar caminhos que podem ser executados em paralelo
+    return Math.max(1, Math.floor(paths.length / 2));
+  }
+
+  private calculateComplexityScore(nodes: FlowiseNode[], edges: FlowiseEdge[], flowAnalysis: any): number {
+    let score = 0;
+    
+    // Pontuação baseada no número de nós
+    score += Math.min(nodes.length * 5, 30);
+    
+    // Pontuação baseada no número de arestas
+    score += Math.min(edges.length * 3, 25);
+    
+    // Pontuação baseada na profundidade
+    score += Math.min(flowAnalysis.maxDepth * 10, 20);
+    
+    // Pontuação baseada em caminhos paralelos
+    score += Math.min(flowAnalysis.parallelPaths * 8, 15);
+    
+    // Pontuação baseada em categorias complexas
+    const complexCategories = ['LLM', 'Agent', 'Tools'];
+    const complexNodes = nodes.filter(n => complexCategories.includes(n.data.category));
+    score += Math.min(complexNodes.length * 7, 10);
+    
+    return Math.min(score, 100);
+  }
+
+  private calculateValidationScore(errors: ValidationError[], warnings: ValidationWarning[], metrics: WorkflowMetrics): number {
     let score = 100;
+    
+    // Deduções por erros
+    score -= errors.length * 20;
+    
+    // Deduções por warnings
+    score -= warnings.length * 5;
+    
+    // Deduções por complexidade
+    if (metrics.complexityScore > 80) score -= 15;
+    else if (metrics.complexityScore > 60) score -= 8;
+    
+    return Math.max(0, score);
+  }
 
-    // Deduct points for errors
-    errors.forEach(error => {
-      switch (error.severity) {
-        case 'high':
-          score -= 20;
-          break;
-        case 'medium':
-          score -= 10;
-          break;
-        case 'low':
-          score -= 5;
-          break;
+  private estimateExecutionTime(nodes: FlowiseNode[], complexityScore: number): string {
+    const baseTime = nodes.length * 0.5; // 0.5s por nó base
+    const complexityMultiplier = 1 + (complexityScore / 100);
+    const estimatedTime = baseTime * complexityMultiplier;
+    
+    if (estimatedTime < 2) return '< 2 segundos';
+    if (estimatedTime < 10) return `${Math.round(estimatedTime)} segundos`;
+    if (estimatedTime < 60) return `${Math.round(estimatedTime / 10) * 10} segundos`;
+    return `${Math.round(estimatedTime / 60)} minutos`;
+  }
+
+  private estimateMemoryUsage(nodes: FlowiseNode[], complexityScore: number): 'low' | 'medium' | 'high' {
+    const memoryIntensiveNodes = nodes.filter(n => 
+      ['Memory', 'Document Stores', 'Embeddings'].includes(n.data.category)
+    ).length;
+    
+    const memoryScore = memoryIntensiveNodes * 20 + complexityScore * 0.3;
+    
+    if (memoryScore < 30) return 'low';
+    if (memoryScore < 70) return 'medium';
+    return 'high';
+  }
+
+  private estimateCost(nodes: FlowiseNode[], complexityScore: number): 'low' | 'medium' | 'high' {
+    const highCostNodes = nodes.filter(n => {
+      const inputs = n.data.inputs || {};
+      return inputs.modelName?.includes('gpt-4') || 
+             inputs.llmModel?.includes('gpt-4');
+    }).length;
+    
+    const costScore = highCostNodes * 25 + complexityScore * 0.2;
+    
+    if (costScore < 30) return 'low';
+    if (costScore < 70) return 'medium';
+    return 'high';
+  }
+
+  private analyzePerformance(nodes: FlowiseNode[], edges: FlowiseEdge[]) {
+    // Análise simplificada de performance
+    return {
+      bottlenecks: this.identifyBottlenecks(nodes, edges),
+      hotPaths: this.identifyHotPaths(nodes, edges)
+    };
+  }
+
+  private analyzeCosts(nodes: FlowiseNode[]) {
+    // Análise simplificada de custos
+    return {
+      estimatedMonthlyCost: this.estimateMonthlyCost(nodes),
+      costBreakdown: this.getCostBreakdown(nodes)
+    };
+  }
+
+  private identifyBottlenecks(nodes: FlowiseNode[], edges: FlowiseEdge[]): string[] {
+    // Identificar nós que podem ser gargalos
+    const bottlenecks: string[] = [];
+    
+    nodes.forEach(node => {
+      const outgoingConnections = edges.filter(e => e.source === node.id).length;
+      const incomingConnections = edges.filter(e => e.target === node.id).length;
+      
+      // Nós com muitas saídas podem ser gargalos
+      if (outgoingConnections > 3) {
+        bottlenecks.push(node.id);
+      }
+      
+      // Nós de categoria específica podem ser gargalos
+      if (['LLM', 'Agent', 'Document Stores'].includes(node.data.category)) {
+        bottlenecks.push(node.id);
       }
     });
+    
+    return bottlenecks;
+  }
 
-    // Deduct points for warnings
-    warnings.forEach(warning => {
-      switch (warning.severity) {
-        case 'high':
-          score -= 10;
-          break;
-        case 'medium':
-          score -= 5;
-          break;
-        case 'low':
-          score -= 2;
-          break;
-      }
+  private identifyHotPaths(nodes: FlowiseNode[], edges: FlowiseEdge[]): string[][] {
+    // Identificar caminhos mais utilizados (simplificado)
+    return [];
+  }
+
+  private estimateMonthlyCost(nodes: FlowiseNode[]): string {
+    const gpt4Nodes = nodes.filter(n => {
+      const inputs = n.data.inputs || {};
+      return inputs.modelName?.includes('gpt-4') || inputs.llmModel?.includes('gpt-4');
+    }).length;
+    
+    const estimatedCost = gpt4Nodes * 50; // $50 por nó GPT-4 por mês
+    
+    if (estimatedCost < 50) return '< $50';
+    if (estimatedCost < 200) return '$50 - $200';
+    return '> $200';
+  }
+
+  private getCostBreakdown(nodes: FlowiseNode[]): Record<string, number> {
+    const breakdown: Record<string, number> = {};
+    
+    nodes.forEach(node => {
+      const category = node.data.category;
+      breakdown[category] = (breakdown[category] || 0) + 1;
     });
+    
+    return breakdown;
+  }
 
-    // Info messages don't deduct points but limit max score
-    if (info.length > 5) {
-      score -= Math.min(5, info.length - 5);
+  private estimateNodeExecutionTime(node: FlowiseNode): string {
+    const category = node.data.category;
+    
+    switch (category) {
+      case 'Chat Models':
+      case 'LLM':
+        return '1-3s';
+      case 'Document Stores':
+      case 'Retrievers':
+        return '0.5-2s';
+      case 'Memory':
+        return '< 0.1s';
+      default:
+        return '< 0.5s';
     }
+  }
 
-    return Math.max(0, Math.min(100, score));
+  private estimateNodeCost(node: FlowiseNode): string {
+    const inputs = node.data.inputs || {};
+    const modelName = inputs.modelName || inputs.llmModel;
+    
+    if (modelName?.includes('gpt-4')) return '$$$';
+    if (modelName?.includes('gpt-3.5')) return '$$';
+    return '$';
+  }
+
+  private inferDataFlow(edge: FlowiseEdge, nodes: PreviewNode[]): string {
+    const sourceNode = nodes.find(n => n.id === edge.source);
+    const targetNode = nodes.find(n => n.id === edge.target);
+    
+    if (sourceNode && targetNode) {
+      return `${sourceNode.category} → ${targetNode.category}`;
+    }
+    
+    return 'data flow';
   }
 }
+
+// Exportar instância única do serviço
+export const workflowValidator = new WorkflowValidator();
