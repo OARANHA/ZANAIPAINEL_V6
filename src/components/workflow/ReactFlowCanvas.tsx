@@ -14,7 +14,9 @@ import {
   Position,
   Connection,
   addEdge,
-  ConnectionMode
+  ConnectionMode,
+  Handle,
+  NodeProps
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -75,7 +77,7 @@ interface ReactFlowCanvasProps {
 }
 
 // Custom Node Component - Enhanced with better connections and improved icons
-const CustomNode = ({ data, selected }: { data: any; selected: boolean }) => {
+const CustomNode = ({ data, selected, sourcePosition, targetPosition }: NodeProps) => {
   const getNodeColor = (type: string): string => {
     const colors: { [key: string]: string } = {
       'Start': '#10b981',      // green
@@ -93,17 +95,17 @@ const CustomNode = ({ data, selected }: { data: any; selected: boolean }) => {
 
   const getNodeIcon = (type: string) => {
     const icons: { [key: string]: React.ReactNode } = {
-      'Start': <CheckCircle className="w-5 h-5" />,
-      'Agent': <Bot className="w-5 h-5" />,
-      'Condition': <GitBranch className="w-5 h-5" />,
-      'LLM': <Cpu className="w-5 h-5" />,
-      'Loop': <AlertTriangle className="w-5 h-5" />,
-      'Tool': <Database className="w-5 h-5" />,
-      'Document': <Database className="w-5 h-5" />,
-      'Memory': <MemoryStick className="w-5 h-5" />,
-      'API': <Globe className="w-5 h-5" />,
+      'Start': <CheckCircle className="w-4 h-4" />,
+      'Agent': <Bot className="w-4 h-4" />,
+      'Condition': <GitBranch className="w-4 h-4" />,
+      'LLM': <Cpu className="w-4 h-4" />,
+      'Loop': <AlertTriangle className="w-4 h-4" />,
+      'Tool': <Database className="w-4 h-4" />,
+      'Document': <Database className="w-4 h-4" />,
+      'Memory': <MemoryStick className="w-4 h-4" />,
+      'API': <Globe className="w-4 h-4" />,
     };
-    return icons[type] || <AlertTriangle className="w-5 h-5" />;
+    return icons[type] || <AlertTriangle className="w-4 h-4" />;
   };
 
   const nodeColor = getNodeColor(data.type);
@@ -118,7 +120,30 @@ const CustomNode = ({ data, selected }: { data: any; selected: boolean }) => {
         boxShadow: selected ? `0 0 0 4px ${nodeColor}20` : undefined
       }}
     >
-      {/* Enhanced connection handles */}
+      {/* ReactFlow Connection Handles */}
+      {data.type !== 'Start' && (
+        <Handle
+          type="target"
+          position={Position.Left}
+          className="w-3 h-3 !bg-gray-400 !border-white !border-2"
+          style={{
+            background: nodeColor,
+          }}
+        />
+      )}
+      
+      {data.type !== 'Generate Final Answer' && data.type !== 'End' && (
+        <Handle
+          type="source"
+          position={Position.Right}
+          className="w-3 h-3 !bg-gray-400 !border-white !border-2"
+          style={{
+            background: nodeColor,
+          }}
+        />
+      )}
+      
+      {/* Enhanced visual connection handles */}
       <div 
         className="absolute -left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 rounded-full border-2 border-white shadow-md transition-all duration-200 hover:scale-125 cursor-crosshair"
         style={{ 
@@ -137,9 +162,9 @@ const CustomNode = ({ data, selected }: { data: any; selected: boolean }) => {
       />
       
       {/* Node content */}
-      <div className="flex items-center gap-3 mb-3">
+      <div className="flex items-center gap-2 mb-3">
         <div 
-          className="p-2 rounded-lg shadow-sm transition-all duration-200 hover:scale-110"
+          className="p-1.5 rounded-lg shadow-sm transition-all duration-200 hover:scale-110"
           style={{ backgroundColor: nodeColor }}
         >
           <div className="text-white">
@@ -204,9 +229,16 @@ export default function ReactFlowCanvas({
   const [selectedNode, setSelectedNode] = useState<WorkflowNode | null>(null);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [initialWorkflowData, setInitialWorkflowData] = useState<string | null>(null);
 
-  // Parse workflow data and convert to ReactFlow format
+  // Parse workflow data and convert to ReactFlow format (only on initial load or workflow change)
   useEffect(() => {
+    // Only initialize if workflow data has changed and we haven't initialized yet
+    if (workflow.flowData === initialWorkflowData && isInitialized) {
+      return;
+    }
+    
     try {
       const flowData = JSON.parse(workflow.flowData);
       console.log('🔍 Workflow data loaded:', flowData);
@@ -249,9 +281,17 @@ export default function ReactFlowCanvas({
       if (workflowEdges.length === 0 && workflowNodes.length > 1) {
         console.log('🔗 No edges found, creating default connections...');
         for (let i = 0; i < workflowNodes.length - 1; i++) {
+          const sourceNode = workflowNodes[i];
+          const targetNode = workflowNodes[i + 1];
+          
+          // Skip creating connection if target node is 'Start' or source is 'End'
+          if (targetNode.data?.type === 'Start' || sourceNode.data?.type === 'Generate Final Answer' || sourceNode.data?.type === 'End') {
+            continue;
+          }
+          
           workflowEdges.push({
-            source: workflowNodes[i].id,
-            target: workflowNodes[i + 1].id
+            source: sourceNode.id,
+            target: targetNode.id
           });
         }
         console.log('🔗 Created default edges:', workflowEdges.length);
@@ -263,7 +303,7 @@ export default function ReactFlowCanvas({
         return {
           id: node.id,
           type: 'custom',
-          position: node.position || { x: 0, y: 0 },
+          position: node.position || { x: Math.random() * 400, y: Math.random() * 300 },
           data: {
             ...node.data,
             onEdit: () => onEditNode?.(node),
@@ -272,12 +312,26 @@ export default function ReactFlowCanvas({
           targetPosition: Position.Left,
           // Habilitar arrastar nós
           draggable: true,
+          connectable: true,
         };
       });
 
-      // Convert edges to ReactFlow format - White connection lines
+      // Convert edges to ReactFlow format - Enhanced white connection lines
       const reactFlowEdges: Edge[] = workflowEdges.map((edge: WorkflowEdge, index: number) => {
         console.log(`🔗 Creating edge ${index}:`, edge);
+        console.log(`🔗 Edge source: ${edge.source}, target: ${edge.target}`);
+        
+        // Verify that source and target nodes exist
+        const sourceNode = workflowNodes.find(n => n.id === edge.source);
+        const targetNode = workflowNodes.find(n => n.id === edge.target);
+        
+        if (!sourceNode) {
+          console.warn(`⚠️ Source node ${edge.source} not found for edge ${index}`);
+        }
+        if (!targetNode) {
+          console.warn(`⚠️ Target node ${edge.target} not found for edge ${index}`);
+        }
+        
         return {
           id: `edge-${index}`,
           source: edge.source,
@@ -286,8 +340,8 @@ export default function ReactFlowCanvas({
           animated: false,
           style: { 
             stroke: '#ffffff', 
-            strokeWidth: 2,
-            filter: 'drop-shadow(0 0 3px rgba(255,255,255,0.5))'
+            strokeWidth: 4,
+            filter: 'drop-shadow(0 0 12px rgba(255,255,255,1))'
           },
           markerEnd: {
             type: MarkerType.ArrowClosed,
@@ -300,14 +354,29 @@ export default function ReactFlowCanvas({
           updatable: true,
           deletable: true,
           className: 'transition-all duration-200',
+          zIndex: 10,
         };
       });
 
       console.log('✅ Setting ReactFlow nodes:', reactFlowNodes.length);
       console.log('✅ Setting ReactFlow edges:', reactFlowEdges.length);
       
+      // Log node positions for debugging
+      reactFlowNodes.forEach(node => {
+        console.log(`📍 Node ${node.id} position:`, node.position);
+      });
+      
+      // Log edge connections for debugging
+      reactFlowEdges.forEach(edge => {
+        console.log(`🔗 Edge ${edge.id}: ${edge.source} -> ${edge.target}`);
+      });
+      
       setNodes(reactFlowNodes);
       setEdges(reactFlowEdges);
+      
+      // Mark as initialized and store initial workflow data
+      setIsInitialized(true);
+      setInitialWorkflowData(workflow.flowData);
     } catch (error) {
       console.error('❌ Error parsing workflow data:', error);
       console.error('❌ Workflow data string:', workflow.flowData);
@@ -354,8 +423,8 @@ export default function ReactFlowCanvas({
           animated: false,
           style: { 
             stroke: '#ffffff', 
-            strokeWidth: 2,
-            filter: 'drop-shadow(0 0 3px rgba(255,255,255,0.5))'
+            strokeWidth: 4,
+            filter: 'drop-shadow(0 0 12px rgba(255,255,255,1))'
           },
           markerEnd: {
             type: MarkerType.ArrowClosed,
@@ -367,13 +436,18 @@ export default function ReactFlowCanvas({
           updatable: true,
           deletable: true,
           className: 'transition-all duration-200',
+          zIndex: 10,
         }
       ];
       
       setNodes(defaultNodes);
       setEdges(defaultEdges);
+      
+      // Mark as initialized even for default workflow
+      setIsInitialized(true);
+      setInitialWorkflowData(workflow.flowData);
     }
-  }, [workflow.flowData, onEditNode]);
+  }, [workflow.flowData, onEditNode, initialWorkflowData, isInitialized]);
 
   // Debug: Log current state
   useEffect(() => {
@@ -385,6 +459,8 @@ export default function ReactFlowCanvas({
   const onNodesChangeHandler = useCallback(
     (changes) => {
       console.log('🔄 Nodes changed:', changes);
+      
+      // Apply the changes to update the internal state
       onNodesChange(changes);
       
       // Log position changes specifically
@@ -423,13 +499,13 @@ export default function ReactFlowCanvas({
     (params: Connection) => {
       const newEdge = {
         ...params,
-        id: `edge-${edges.length}`,
+        id: `edge-${edges.length}-${Date.now()}`,
         type: 'smoothstep',
         animated: false,
         style: { 
           stroke: '#ffffff', 
-          strokeWidth: 2,
-          filter: 'drop-shadow(0 0 3px rgba(255,255,255,0.5))'
+          strokeWidth: 4,
+          filter: 'drop-shadow(0 0 12px rgba(255,255,255,1))'
         },
         markerEnd: {
           type: MarkerType.ArrowClosed,
@@ -441,7 +517,10 @@ export default function ReactFlowCanvas({
         updatable: true,
         deletable: true,
         className: 'transition-all duration-200',
+        zIndex: 10,
       };
+      
+      console.log('🔗 Creating new connection:', newEdge);
       setEdges((eds) => addEdge(newEdge, eds));
     },
     [edges.length]
@@ -588,10 +667,25 @@ export default function ReactFlowCanvas({
             connectionLineType="smoothstep"
             connectionLineStyle={{ 
               stroke: '#ffffff', 
-              strokeWidth: 2,
-              strokeDasharray: '5,5'
+              strokeWidth: 4,
+              strokeDasharray: '5,5',
+              filter: 'drop-shadow(0 0 12px rgba(255,255,255,1))'
             }}
             attributionPosition="bottom-left"
+            defaultEdgeOptions={{
+              style: { 
+                stroke: '#ffffff', 
+                strokeWidth: 4,
+                filter: 'drop-shadow(0 0 12px rgba(255,255,255,1))'
+              },
+              markerEnd: {
+                type: MarkerType.ArrowClosed,
+                color: '#ffffff',
+                width: 15,
+                height: 15,
+              },
+              zIndex: 10,
+            }}
           >
             <Controls 
               className="bg-gray-800 border-gray-700 text-white"
