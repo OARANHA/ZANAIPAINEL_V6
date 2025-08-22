@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   ReactFlow, 
-  MiniMap, 
   Controls, 
   Background, 
   useNodesState, 
@@ -12,7 +11,10 @@ import {
   Node,
   NodeTypes,
   MarkerType,
-  Position
+  Position,
+  Connection,
+  addEdge,
+  ConnectionMode
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -34,7 +36,8 @@ import {
   MemoryStick,
   Globe,
   AlertTriangle,
-  CheckCircle
+  CheckCircle,
+  RotateCcw
 } from 'lucide-react';
 
 interface WorkflowNode {
@@ -71,7 +74,7 @@ interface ReactFlowCanvasProps {
   className?: string;
 }
 
-// Custom Node Component - Simplified and Professional
+// Custom Node Component - Enhanced with better connections and improved icons
 const CustomNode = ({ data, selected }: { data: any; selected: boolean }) => {
   const getNodeColor = (type: string): string => {
     const colors: { [key: string]: string } = {
@@ -90,55 +93,86 @@ const CustomNode = ({ data, selected }: { data: any; selected: boolean }) => {
 
   const getNodeIcon = (type: string) => {
     const icons: { [key: string]: React.ReactNode } = {
-      'Start': <CheckCircle className="w-4 h-4" />,
-      'Agent': <Bot className="w-4 h-4" />,
-      'Condition': <GitBranch className="w-4 h-4" />,
-      'LLM': <Cpu className="w-4 h-4" />,
-      'Loop': <AlertTriangle className="w-4 h-4" />,
-      'Tool': <Database className="w-4 h-4" />,
-      'Document': <Database className="w-4 h-4" />,
-      'Memory': <MemoryStick className="w-4 h-4" />,
-      'API': <Globe className="w-4 h-4" />,
+      'Start': <CheckCircle className="w-5 h-5" />,
+      'Agent': <Bot className="w-5 h-5" />,
+      'Condition': <GitBranch className="w-5 h-5" />,
+      'LLM': <Cpu className="w-5 h-5" />,
+      'Loop': <AlertTriangle className="w-5 h-5" />,
+      'Tool': <Database className="w-5 h-5" />,
+      'Document': <Database className="w-5 h-5" />,
+      'Memory': <MemoryStick className="w-5 h-5" />,
+      'API': <Globe className="w-5 h-5" />,
     };
-    return icons[type] || <AlertTriangle className="w-4 h-4" />;
+    return icons[type] || <AlertTriangle className="w-5 h-5" />;
   };
 
   const nodeColor = getNodeColor(data.type);
   
   return (
     <div 
-      className={`px-4 py-3 shadow-md rounded-lg border-2 bg-white min-w-[140px] transition-all duration-200 ${
-        selected ? 'ring-2 ring-blue-500 shadow-lg' : 'hover:shadow-lg'
+      className={`px-4 py-3 shadow-lg rounded-xl border-2 bg-white min-w-[160px] transition-all duration-300 hover:shadow-xl ${
+        selected ? 'ring-4 ring-blue-400 shadow-xl scale-105' : 'hover:shadow-lg hover:scale-102'
       }`}
-      style={{ borderColor: nodeColor }}
+      style={{ 
+        borderColor: nodeColor,
+        boxShadow: selected ? `0 0 0 4px ${nodeColor}20` : undefined
+      }}
     >
-      <div className="flex items-center gap-2 mb-2">
+      {/* Enhanced connection handles */}
+      <div 
+        className="absolute -left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 rounded-full border-2 border-white shadow-md transition-all duration-200 hover:scale-125 cursor-crosshair"
+        style={{ 
+          backgroundColor: nodeColor,
+          display: data.type === 'Start' ? 'none' : 'block'
+        }}
+        title="Conexão de entrada"
+      />
+      <div 
+        className="absolute -right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 rounded-full border-2 border-white shadow-md transition-all duration-200 hover:scale-125 cursor-crosshair"
+        style={{ 
+          backgroundColor: nodeColor,
+          display: data.type === 'Generate Final Answer' ? 'none' : 'block'
+        }}
+        title="Conexão de saída"
+      />
+      
+      {/* Node content */}
+      <div className="flex items-center gap-3 mb-3">
         <div 
-          className="p-1 rounded"
+          className="p-2 rounded-lg shadow-sm transition-all duration-200 hover:scale-110"
           style={{ backgroundColor: nodeColor }}
         >
           <div className="text-white">
             {getNodeIcon(data.type)}
           </div>
         </div>
-        <div className="flex-1">
-          <div className="font-semibold text-sm text-gray-900 line-clamp-2">
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-sm text-gray-900 line-clamp-2 leading-tight">
             {data.label}
           </div>
-          <div className="text-xs text-gray-500">
+          <div className="text-xs text-gray-500 mt-1">
             {data.type}
           </div>
         </div>
       </div>
       
-      <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-100">
-        <Badge variant="secondary" className="text-xs">
+      {/* Status and actions */}
+      <div className="flex justify-between items-center mt-3 pt-3 border-t border-gray-100">
+        <Badge 
+          variant="secondary" 
+          className="text-xs font-medium"
+          style={{ 
+            backgroundColor: `${nodeColor}20`,
+            color: nodeColor,
+            borderColor: `${nodeColor}40`
+          }}
+        >
           {data.category}
         </Badge>
         <Button
           variant="ghost"
           size="sm"
-          className="h-6 text-xs px-2"
+          className="h-7 text-xs px-3 hover:bg-gray-100 transition-colors"
           onClick={(e) => {
             e.stopPropagation();
             data.onEdit?.();
@@ -148,16 +182,6 @@ const CustomNode = ({ data, selected }: { data: any; selected: boolean }) => {
           Editar
         </Button>
       </div>
-      
-      {/* Simple connection handles */}
-      <div 
-        className="absolute -left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 bg-blue-500 rounded-full border-2 border-white"
-        style={{ display: data.type === 'Start' ? 'none' : 'block' }}
-      />
-      <div 
-        className="absolute -right-2 top-1/2 transform -translate-y-1/2 w-3 h-3 bg-blue-500 rounded-full border-2 border-white"
-        style={{ display: data.type === 'Generate Final Answer' ? 'none' : 'block' }}
-      />
     </div>
   );
 };
@@ -199,28 +223,33 @@ export default function ReactFlowCanvas({
         },
         sourcePosition: Position.Right,
         targetPosition: Position.Left,
-        // Disable dragging for now - can be enabled later
-        draggable: false,
+        // Habilitar arrastar nós
+        draggable: true,
       }));
 
-      // Convert edges to ReactFlow format - simple and clean
+      // Convert edges to ReactFlow format - White connection lines
       const reactFlowEdges: Edge[] = workflowEdges.map((edge: WorkflowEdge, index: number) => ({
         id: `edge-${index}`,
         source: edge.source,
         target: edge.target,
         type: 'smoothstep',
-        animated: false, // Disabled for cleaner look
+        animated: false,
         style: { 
-          stroke: '#94a3b8', 
-          strokeWidth: 2 
+          stroke: '#ffffff', 
+          strokeWidth: 2,
+          filter: 'drop-shadow(0 0 3px rgba(255,255,255,0.5))'
         },
         markerEnd: {
           type: MarkerType.ArrowClosed,
-          color: '#64748b',
+          color: '#ffffff',
+          width: 15,
+          height: 15,
         },
-        // Disable edge editing for now
-        selectable: false,
-        updatable: false,
+        // Habilitar edição de arestas
+        selectable: true,
+        updatable: true,
+        deletable: true,
+        className: 'transition-all duration-200',
       }));
 
       setNodes(reactFlowNodes);
@@ -242,6 +271,35 @@ export default function ReactFlowCanvas({
     onNodeClick?.(workflowNode);
   }, [onNodeClick]);
 
+  // Handle connection creation
+  const onConnect = useCallback(
+    (params: Connection) => {
+      const newEdge = {
+        ...params,
+        id: `edge-${edges.length}`,
+        type: 'smoothstep',
+        animated: false,
+        style: { 
+          stroke: '#ffffff', 
+          strokeWidth: 2,
+          filter: 'drop-shadow(0 0 3px rgba(255,255,255,0.5))'
+        },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: '#ffffff',
+          width: 15,
+          height: 15,
+        },
+        selectable: true,
+        updatable: true,
+        deletable: true,
+        className: 'transition-all duration-200',
+      };
+      setEdges((eds) => addEdge(newEdge, eds));
+    },
+    [edges.length]
+  );
+
   // Initialize ReactFlow instance
   const onInit = useCallback((instance: any) => {
     setReactFlowInstance(instance);
@@ -255,6 +313,13 @@ export default function ReactFlowCanvas({
   const fitView = () => {
     if (reactFlowInstance) {
       reactFlowInstance.fitView();
+    }
+  };
+
+  // Reset view
+  const resetView = () => {
+    if (reactFlowInstance) {
+      reactFlowInstance.setTransform({ x: 0, y: 0, zoom: 1 });
     }
   };
 
@@ -272,19 +337,19 @@ export default function ReactFlowCanvas({
   };
 
   return (
-    <Card className={`w-full h-full ${className}`}>
-      <CardHeader className="pb-3">
+    <Card className={`w-full h-full bg-gray-900 border-gray-800 ${className}`}>
+      <CardHeader className="pb-3 bg-gray-900 border-b border-gray-800">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Settings className="w-5 h-5 text-blue-600" />
+            <CardTitle className="text-lg flex items-center gap-2 text-white">
+              <Settings className="w-5 h-5 text-blue-400" />
               {workflow.name}
             </CardTitle>
-            <Badge variant="outline">{workflow.type}</Badge>
-            <Badge variant="secondary">
+            <Badge variant="outline" className="border-gray-600 text-gray-300">{workflow.type}</Badge>
+            <Badge variant="secondary" className="bg-gray-800 text-gray-300">
               Complexidade: {workflow.complexityScore}/100
             </Badge>
-            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+            <Badge variant="outline" className="bg-green-900/50 text-green-300 border-green-700">
               {workflow.nodeCount} nós • {workflow.edgeCount} conexões
             </Badge>
           </div>
@@ -293,8 +358,18 @@ export default function ReactFlowCanvas({
             <Button
               variant="outline"
               size="sm"
+              onClick={resetView}
+              title="Resetar visualização"
+              className="border-gray-600 text-gray-300 hover:bg-gray-800"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={fitView}
               title="Ajustar à tela"
+              className="border-gray-600 text-gray-300 hover:bg-gray-800"
             >
               <Maximize className="w-4 h-4" />
             </Button>
@@ -303,6 +378,7 @@ export default function ReactFlowCanvas({
               size="sm"
               onClick={zoomOut}
               title="Diminuir zoom"
+              className="border-gray-600 text-gray-300 hover:bg-gray-800"
             >
               <ZoomOut className="w-4 h-4" />
             </Button>
@@ -311,6 +387,7 @@ export default function ReactFlowCanvas({
               size="sm"
               onClick={zoomIn}
               title="Aumentar zoom"
+              className="border-gray-600 text-gray-300 hover:bg-gray-800"
             >
               <ZoomIn className="w-4 h-4" />
             </Button>
@@ -319,6 +396,7 @@ export default function ReactFlowCanvas({
                 variant="outline"
                 size="sm"
                 onClick={onPreview}
+                className="border-gray-600 text-gray-300 hover:bg-gray-800"
               >
                 <Eye className="w-4 h-4 mr-2" />
                 Preview
@@ -329,6 +407,7 @@ export default function ReactFlowCanvas({
                 variant="outline"
                 size="sm"
                 onClick={onSave}
+                className="border-gray-600 text-gray-300 hover:bg-gray-800"
               >
                 <Save className="w-4 h-4 mr-2" />
                 Salvar
@@ -338,10 +417,10 @@ export default function ReactFlowCanvas({
         </div>
       </CardHeader>
       
-      <CardContent className="p-0">
+      <CardContent className="p-0 bg-black">
         <div 
           ref={reactFlowWrapper}
-          className="w-full h-[600px] border-t"
+          className="w-full h-[600px] border-t border-gray-800 relative"
         >
           <ReactFlow
             nodes={nodes}
@@ -349,42 +428,46 @@ export default function ReactFlowCanvas({
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onNodeClick={onNodeClickHandler}
+            onConnect={onConnect}
             onInit={onInit}
             nodeTypes={nodeTypes}
+            connectionMode={ConnectionMode.Loose}
             fitView
-            // Disable advanced features for now
-            nodesDraggable={false}
-            nodesConnectable={false}
-            edgesUpdatable={false}
-            elementsSelectable={false}
+            // Habilitar todas as interações
+            nodesDraggable={true}
+            nodesConnectable={true}
+            edgesUpdatable={true}
+            elementsSelectable={true}
+            connectionLineType="smoothstep"
+            connectionLineStyle={{ 
+              stroke: '#ffffff', 
+              strokeWidth: 2,
+              strokeDasharray: '5,5'
+            }}
             attributionPosition="bottom-left"
           >
-            <Controls />
-            <MiniMap 
-              nodeStrokeColor={(n) => {
-                if (n.style?.backgroundColor) return n.style.backgroundColor as string;
-                return '#eee';
-              }}
-              nodeColor={(n) => {
-                if (n.style?.backgroundColor) return n.style.backgroundColor as string;
-                return '#fff';
-              }}
-              nodeBorderRadius={2}
-              zoomable={false}
-              pannable={false}
+            <Controls 
+              className="bg-gray-800 border-gray-700 text-white"
+              showInteractive={false}
             />
+            
+            {/* Fundo preto com pontinhos */}
             <Background 
-              color="#aaa" 
-              gap={16} 
-              variant="dots" 
+              color="#4a5568" 
+              gap={20} 
+              variant="dots"
+              size={1}
             />
           </ReactFlow>
         </div>
         
-        {/* Simple instructions overlay */}
-        <div className="absolute bottom-4 left-4 bg-black/70 text-white text-xs px-3 py-2 rounded-lg">
-          <div>🖱️ Use scroll para zoom • Clique nos nós para selecionar</div>
+        {/* Instructions overlay */}
+        <div className="absolute bottom-4 left-4 bg-black/80 text-white text-xs px-4 py-3 rounded-lg backdrop-blur-sm border border-gray-700">
+          <div className="font-semibold mb-1">Controles:</div>
+          <div>🖱️ Scroll para zoom • Arraste para pan</div>
+          <div>🔗 Arraste entre nós para conectar</div>
           <div>✏️ Clique em "Editar" para configurar o conteúdo</div>
+          <div>📦 Arraste as caixas para reposicionar</div>
         </div>
       </CardContent>
     </Card>
