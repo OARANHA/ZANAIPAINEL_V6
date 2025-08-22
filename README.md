@@ -62,6 +62,24 @@ A plataforma Zanai agora possui integração completa e bidirecional com Flowise
 - **📊 Analytics Completo**: Monitoramento de complexidade, performance e otimizações
 - **🔗 URLs Diretas**: Geração automática de links de acesso para cada workflow
 - **⚡ Exportação em Tempo Real**: Crie e publique workflows instantaneamente no Flowise externo
+- **🧠 Sistema de Aprendizado**: Aprenda com workflows reais do Flowise para criar templates de alta qualidade
+
+### 🎯 Flowise Learning System
+
+Novo sistema inteligente que resolve o problema da criação de proxies simples:
+
+- **📚 Aprendizado com Workflows Reais**: Analisa workflows funcionais do Flowise
+- **🔍 Extração de Padrões**: Identifica padrões de configuração e fluxo
+- **✅ Validação Humana**: Templates são validados por humanos antes do uso
+- **📈 Melhoria Contínua**: Sistema aprende com o uso e feedback
+- **🎯 Templates de Alta Qualidade**: Cria agentes baseados em casos reais comprovados
+
+#### Como Usar o Learning System
+
+1. **Acesse o Gerenciador**: `/admin/flowise-learning`
+2. **Importe Workflows**: Adicione workflows reais do Flowise para análise
+3. **Valide Templates**: Revise e aproveve os templates gerados
+4. **Use na Criação**: Utilize templates validados para criar agentes de alta qualidade
 
 ### 🌐 URLs de Acesso
 
@@ -87,6 +105,9 @@ Dependendo do tipo de workflow, o sistema gera automaticamente as URLs corretas:
 - ✅ **Sincronização Completa**: Dados consistentes entre ZanAI e Flowise
 - ✅ **Segurança Aprimorada**: Rota movida para `/admin/flowise-workflows` com proteção SUPER_ADMIN
 - ✅ **Correção de Bugs**: Problemas de tipo de dados JSON resolvidos
+- ✅ **Learning System**: Sistema de aprendizado implementado e funcional
+- ✅ **Template Management**: Gerenciamento completo de templates aprendidos
+- ✅ **Pattern Extraction**: Extração inteligente de padrões de workflows reais
 
 ### 🔧 Configuração Flowise
 

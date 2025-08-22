@@ -77,7 +77,20 @@ O painel administrativo inclui:
 - **Configuração**: Parâmetros de treinamento
 - **Relatórios**: Análise de progresso
 
-#### 8. MCP (`/admin/mcp`)
+#### 8. Flowise Workflows (`/admin/flowise-workflows`)
+- **Gerenciar Workflows**: Sincronização com Flowise externo
+- **Exportação**: Exportar workflows para Flowise
+- **Analytics**: Monitoramento de performance
+- **URLs**: Gerenciamento de links de acesso
+
+#### 9. Flowise Learning (`/admin/flowise-learning`)
+- **Sistema de Aprendizado**: Aprender com workflows reais do Flowise
+- **Template Management**: Gerenciar templates aprendidos
+- **Pattern Extraction**: Extrair padrões de workflows funcionais
+- **Validação Humana**: Validar templates antes do uso
+- **Métricas de Uso**: Acompanhar performance dos templates
+
+#### 10. MCP (`/admin/mcp`)
 - **MCP Servers**: Gerenciar servidores MCP
 - **Tools**: Ferramentas disponíveis
 - **Conexões**: Status das conexões
@@ -263,6 +276,185 @@ Configure alertas para:
 3. Escolha o formato de exportação
 4. Clique em "Exportar"
 5. Aguarde a geração do relatório
+
+## 🧠 Flowise Learning System
+
+### Visão Geral
+
+O Flowise Learning System é uma funcionalidade avançada que permite à plataforma Zanai aprender com workflows reais do Flowise para criar templates de alta qualidade. Este sistema resolve o problema fundamental da criação de proxies simples que podem não funcionar bem com a complexa arquitetura do Flowise.
+
+### Como Funciona
+
+#### Fluxo de Aprendizado
+
+```
+Flowise Real → Análise → Extração de Padrões → Template Gerado → Validação Humana → Template Validado → Uso para Criação de Agentes
+```
+
+#### Componentes do Sistema
+
+1. **Analisador de Workflows**: Examina workflows reais do Flowise
+2. **Extrator de Padrões**: Identifica padrões de configuração e fluxo
+3. **Gerador de Templates**: Cria templates simplificados para Zanai
+4. **Sistema de Validação**: Permite validação humana dos templates
+5. **Gerenciador de Templates**: Armazena e gerencia templates aprendidos
+
+### Gerenciando o Sistema de Aprendizado
+
+#### Acessando o Sistema
+
+1. Navegue para `/admin/flowise-learning`
+2. Você verá o painel de gerenciamento do learning system
+
+#### Importando Workflows para Aprendizado
+
+1. **Importar Workflow Manualmente**:
+   - Clique em "Importar Workflow do Flowise"
+   - Insira o ID do workflow ou URL do Flowise
+   - O sistema irá analisar automaticamente
+
+2. **Importação em Massa**:
+   - Prepare uma lista de IDs de workflows
+   - Use a API para importação batch
+   - Monitore o progresso da análise
+
+#### Analisando Templates Gerados
+
+Após a importação, o sistema gera um template com:
+
+- **Padrões Extraídos**: Configurações comuns e estruturas
+- **Complexidade**: Classificação (simple, medium, complex)
+- **Categoria**: Tipo de workflow (customer_service, sales, etc.)
+- **Configuração Zanai**: Versão simplificada para Zanai
+
+#### Validando Templates
+
+1. **Revisão do Template**:
+   - Examine os padrões extraídos
+   - Verifique a configuração gerada
+   - Teste o template se necessário
+
+2. **Ajustes Manuais**:
+   - Modifique configurações se necessário
+   - Adicione notas sobre o template
+   - Ajuste a classificação de complexidade
+
+3. **Validação**:
+   - Marque o template como validado
+   - Adicione observações para outros administradores
+   - Aproveve para uso na criação de agentes
+
+#### Monitorando Uso de Templates
+
+Acompanhe as métricas dos templates:
+
+- **Contagem de Uso**: Quantas vezes cada template foi usado
+- **Taxa de Sucesso**: Performance dos agentes criados com o template
+- **Feedback**: Avaliação dos usuários sobre os templates
+- **Popularidade**: Templates mais utilizados
+
+### Melhores Práticas
+
+#### Seleção de Workflows para Aprendizado
+
+- **Workflows Funcionais**: Importe apenas workflows que funcionam bem
+- **Diversidade**: Inclua diferentes tipos e complexidades
+- **Casos Reais**: Prefira workflows que resolvem problemas reais
+- **Atualização**: Importe novos workflows regularmente
+
+#### Validação de Templates
+
+- **Revisão Cuidadosa**: Analise cada template detalhadamente
+- **Testes Práticos**: Teste templates antes de validar
+- **Documentação**: Adicione notas explicativas
+- **Colaboração**: Envolva múltiplos administradores na validação
+
+#### Manutenção do Sistema
+
+- **Limpeza Regular**: Remova templates não utilizados
+- **Atualização**: Mantenha o sistema atualizado com novos workflows
+- **Monitoramento**: Acompanhe a performance dos templates
+- **Melhoria Contínua**: Use o feedback para melhorar o sistema
+
+### Solução de Problemas
+
+#### Templates de Baixa Qualidade
+
+Se os templates gerados não são de boa qualidade:
+
+1. **Verifique a Fonte**: Certifique-se de que os workflows originais são de boa qualidade
+2. **Ajuste Parâmetros**: Modifique os parâmetros de extração de padrões
+3. **Validação Manual**: Faça ajustes manuais nos templates
+4. **Feedback**: Use o feedback para melhorar o sistema
+
+#### Problemas de Importação
+
+Se ocorrerem problemas na importação:
+
+1. **Verifique Conexão**: Certifique-se de que a conexão com Flowise está funcionando
+2. **Permissões**: Verifique as permissões de acesso ao Flowise
+3. **Formato**: Verifique se os IDs de workflows estão corretos
+4. **Logs**: Analise os logs do sistema para identificar problemas
+
+#### Performance do Sistema
+
+Se o sistema estiver lento:
+
+1. **Cache**: Verifique se o cache está funcionando corretamente
+2. **Recursos**: Monitore o uso de CPU e memória
+3. **Banco de Dados**: Otimize as consultas ao banco de dados
+4. **Escalabilidade**: Considere escalar o sistema se necessário
+
+### API do Learning System
+
+#### Endpoints Disponíveis
+
+- `POST /api/v1/flowise-workflows/learning` - Analisa workflow
+- `GET /api/v1/flowise-workflows/learning/templates` - Lista templates
+- `POST /api/v1/flowise-workflows/learning/templates/[id]/validate` - Valida template
+- `POST /api/v1/flowise-workflows/learning/templates/[id]/use` - Registra uso
+
+#### Exemplo de Uso
+
+```bash
+# Analisar um workflow
+curl -X POST "https://your-domain.com/api/v1/flowise-workflows/learning" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-token" \
+  -d '{
+    "workflowId": "workflow_123",
+    "flowiseUrl": "https://flowise.example.com"
+  }'
+
+# Validar um template
+curl -X POST "https://your-domain.com/api/v1/flowise-workflows/learning/templates/template_123/validate" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-token" \
+  -d '{
+    "validated": true,
+    "notes": "Template validado e testado com sucesso"
+  }'
+```
+
+### Integração com Outros Sistemas
+
+O Flowise Learning System se integra com:
+
+- **Sistema de Agentes**: Usa templates para criação de agentes
+- **Analytics**: Fornece métricas sobre uso de templates
+- **Flowise Integration**: Mantém sincronização com workflows
+- **Admin Interface**: Interface completa de gerenciamento
+
+### Futuras Melhorias
+
+Planejadas para o futuro:
+
+- **Aprendizado Automático**: Validação automática baseada em métricas
+- **Exportação Inteligente**: Exportar melhorias de volta para Flowise
+- **Sistema de Recomendação**: Recomendar templates baseado no contexto
+- **Análise Avançada**: Métricas mais detalhadas de performance
+
+---
 
 ## 🔒 Segurança
 

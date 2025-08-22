@@ -119,15 +119,7 @@ export default function FlowiseLearningManager() {
 
   const loadTemplates = async () => {
     try {
-      const response = await fetch('/api/v1/flowise-workflows', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'get_learned_templates',
-          data: {}
-        })
-      });
-
+      const response = await fetch('/api/v1/learning/templates');
       if (response.ok) {
         const data = await response.json();
         setTemplates(data.templates || []);
@@ -141,16 +133,13 @@ export default function FlowiseLearningManager() {
     setImporting(workflow.id);
     try {
       // Analisar o workflow para extrair padrões
-      const analysisResponse = await fetch('/api/v1/flowise-workflows', {
+      const analysisResponse = await fetch('/api/v1/learning/flowise', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'analyze_workflow',
-          data: {
-            workflowId: workflow.id,
-            flowData: workflow.flowData,
-            type: workflow.type
-          }
+          workflowId: workflow.id,
+          flowData: workflow.flowData,
+          type: workflow.type
         })
       });
 
@@ -158,23 +147,21 @@ export default function FlowiseLearningManager() {
       
       if (analysisResult.success) {
         // Criar template aprendido
-        const templateResponse = await fetch('/api/v1/flowise-workflows', {
+        const templateResponse = await fetch('/api/v1/learning/templates', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            action: 'create_learned_template',
-            data: {
-              sourceWorkflowId: workflow.id,
-              name: workflow.name,
-              category: workflow.category,
-              complexity: workflow.complexity > 10 ? 'complex' : workflow.complexity > 5 ? 'medium' : 'simple',
-              patterns: analysisResult.patterns,
-              zanaiConfig: analysisResult.zanaiConfig
-            }
+            sourceWorkflowId: workflow.id,
+            name: workflow.name,
+            category: workflow.category,
+            complexity: workflow.complexity > 10 ? 'complex' : workflow.complexity > 5 ? 'medium' : 'simple',
+            patterns: analysisResult.patterns,
+            zanaiConfig: analysisResult.zanaiConfig
           })
         });
 
         if (templateResponse.ok) {
+          const templateData = await templateResponse.json();
           toast({
             title: "Workflow importado com sucesso!",
             description: `O workflow "${workflow.name}" foi analisado e transformado em template.`,
@@ -227,13 +214,10 @@ export default function FlowiseLearningManager() {
 
   const validateTemplate = async (templateId: string) => {
     try {
-      const response = await fetch('/api/v1/flowise-workflows', {
-        method: 'POST',
+      const response = await fetch(`/api/v1/learning/templates/${templateId}`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'validate_template',
-          data: { templateId }
-        })
+        body: JSON.stringify({ validated: true })
       });
 
       if (response.ok) {
