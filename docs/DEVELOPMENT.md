@@ -118,6 +118,9 @@ src/components/
 │   ├── chart.tsx          # Chart component
 │   ├── form.tsx           # Form components
 │   ├── toast.tsx          # Toast notifications
+│   ├── alert-dialog.tsx   # Alert dialog for confirmations
+│   ├── checkbox.tsx       # Checkbox component
+│   ├── label.tsx          # Label component
 │   └── ...                # Other UI components
 ├── layout/                # Layout components
 │   ├── Layout.tsx         # Main layout
@@ -140,11 +143,25 @@ src/components/
 │   ├── AgentActions.tsx   # Agent actions
 │   ├── CreateAgent.tsx    # Create agent dialog
 │   ├── EditAgent.tsx      # Edit agent dialog
-│   └── AgentExecution.tsx # Agent execution
+│   ├── AgentExecution.tsx # Agent execution
+│   ├── AgentCardWithFlowiseIntegration.tsx # Agent card with Flowise integration
+│   ├── AgentNodeConfigDialog.tsx # Node configuration dialog
+│   ├── AgentDetailsDialog.tsx # Agent details dialog
+│   ├── ExportFormatDialog.tsx # Export format dialog
+│   ├── QuickAgentInput.tsx # Quick agent input
+│   └── AgentActionsMenu.tsx # Agent actions menu
 ├── admin/                 # Admin components
 │   ├── MCPManager.tsx     # MCP server manager
 │   ├── SpecialistGenerator.tsx # Specialist generator
-│   └── MCPManual.tsx      # MCP manual
+│   ├── MCPManual.tsx      # MCP manual
+│   ├── AIWorkflowGenerator.tsx # AI workflow generator
+│   ├── WorkflowPreview.tsx # Workflow preview
+│   └── MCPAgentIntegration.tsx # MCP agent integration
+├── workflow/              # Workflow components
+│   ├── WorkflowComplexityIndicator.tsx # Complexity indicator
+│   ├── WorkflowCard.tsx   # Workflow card
+│   ├── WorkflowVisualization.tsx # Workflow visualization
+│   └── index.ts           # Workflow exports
 └── other components...
 ```
 
@@ -324,6 +341,182 @@ export class UserService {
     });
   }
 }
+```
+
+### Advanced Deletion Patterns
+
+```typescript
+// Advanced deletion with options and backup
+export class WorkflowService {
+  static async deleteWorkflow({ 
+    flowiseId, 
+    skipFlowiseDelete = false,
+    createBackup = false 
+  }: {
+    flowiseId: string;
+    skipFlowiseDelete?: boolean;
+    createBackup?: boolean;
+  }) {
+    try {
+      // Create backup if requested
+      if (createBackup) {
+        const workflow = await db.flowiseWorkflow.findUnique({
+          where: { flowiseId }
+        });
+        
+        if (workflow) {
+          const backupData = {
+            ...workflow,
+            backupCreatedAt: new Date().toISOString(),
+            deletedBy: 'system'
+          };
+          
+          // Save backup logic here
+          console.log('Backup created:', backupData);
+        }
+      }
+
+      // Delete from Flowise if not skipped
+      let deletedFromFlowise = false;
+      let flowiseError = null;
+
+      if (!skipFlowiseDelete) {
+        try {
+          const flowiseBaseUrl = "https://aaranha-zania.hf.space";
+          const deleteUrl = `${flowiseBaseUrl}/api/v1/chatflows/${flowiseId}`;
+          
+          const response = await fetch(deleteUrl, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${process.env.FLOWISE_API_KEY}`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (response.ok) {
+            deletedFromFlowise = true;
+          } else {
+            const errorText = await response.text();
+            flowiseError = `Flowise deletion failed: ${response.status} - ${errorText}`;
+          }
+        } catch (error) {
+          flowiseError = `Flowise deletion error: ${error instanceof Error ? error.message : 'Unknown error'}`;
+        }
+      }
+
+      // Delete from local database
+      const deleted = await db.flowiseWorkflow.delete({
+        where: { flowiseId }
+      });
+
+      return {
+        success: true,
+        deleted,
+        deletedFromFlowise,
+        flowiseError,
+        skipFlowiseDelete,
+        status: deletedFromFlowise || skipFlowiseDelete ? 'SUCCESS' : 'PARTIAL'
+      };
+
+    } catch (error) {
+      console.error('Workflow deletion error:', error);
+      throw error;
+    }
+  }
+}
+```
+
+### UI Component Patterns
+
+```typescript
+// Advanced confirmation dialog with options
+interface DeleteConfirmationDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: (options: DeleteOptions) => void;
+  itemName: string;
+  itemType: string;
+}
+
+interface DeleteOptions {
+  deleteFromLocal: boolean;
+  deleteFromExternal: boolean;
+  createBackup: boolean;
+}
+
+export const DeleteConfirmationDialog: React.FC<DeleteConfirmationDialogProps> = ({
+  isOpen,
+  onClose,
+  onConfirm,
+  itemName,
+  itemType
+}) => {
+  const [options, setOptions] = useState<DeleteOptions>({
+    deleteFromLocal: true,
+    deleteFromExternal: false,
+    createBackup: false
+  });
+
+  const handleConfirm = () => {
+    onConfirm(options);
+    onClose();
+  };
+
+  return (
+    <AlertDialog open={isOpen} onOpenChange={onClose}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
+          <AlertDialogDescription>
+            Você está prestes a excluir "{itemName}". Escolha as opções abaixo:
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        
+        <div className="space-y-4">
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="delete-local"
+              checked={options.deleteFromLocal}
+              onCheckedChange={(checked) => 
+                setOptions(prev => ({ ...prev, deleteFromLocal: checked as boolean }))
+              }
+            />
+            <Label htmlFor="delete-local">Excluir do banco local</Label>
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="delete-external"
+              checked={options.deleteFromExternal}
+              onCheckedChange={(checked) => 
+                setOptions(prev => ({ ...prev, deleteFromExternal: checked as boolean }))
+              }
+            />
+            <Label htmlFor="delete-external">Excluir do sistema externo</Label>
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="create-backup"
+              checked={options.createBackup}
+              onCheckedChange={(checked) => 
+                setOptions(prev => ({ ...prev, createBackup: checked as boolean }))
+              }
+            />
+            <Label htmlFor="create-backup">Criar backup antes de excluir</Label>
+          </div>
+        </div>
+        
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogAction onClick={handleConfirm}>
+            Confirmar Exclusão
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+};
 ```
 
 ## 🔌 Integrações

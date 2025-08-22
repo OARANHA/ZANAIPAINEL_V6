@@ -557,6 +557,220 @@ PUT /api/admin/users/{id}
 }
 ```
 
+## 🔄 Flowise Workflows API
+
+### Listar Workflows
+
+```http
+GET /api/v1/flowise-workflows
+```
+
+#### Parâmetros de Query
+
+| Parâmetro | Tipo | Descrição | Padrão |
+|-----------|------|-----------|---------|
+| `page` | integer | Número da página | 1 |
+| `limit` | integer | Itens por página | 20 |
+| `status` | string | Filtrar por status (deployed, undeployed) | null |
+| `type` | string | Filtrar por tipo (chatflow, toolflow) | null |
+| `search` | string | Buscar por nome ou descrição | null |
+
+#### Exemplo de Resposta
+
+```json
+{
+  "success": true,
+  "data": {
+    "workflows": [
+      {
+        "id": "workflow_123",
+        "flowiseId": "chatflow_456",
+        "name": "Atendimento ao Cliente",
+        "description": "Workflow para atendimento ao cliente",
+        "type": "chatflow",
+        "status": "deployed",
+        "complexityScore": 75,
+        "nodeCount": 5,
+        "deployed": true,
+        "createdAt": "2024-01-15T10:30:00Z",
+        "updatedAt": "2024-01-15T10:30:00Z"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 20,
+      "total": 15,
+      "totalPages": 1
+    }
+  },
+  "message": "Workflows listados com sucesso"
+}
+```
+
+### Criar Workflow
+
+```http
+POST /api/v1/flowise-workflows
+```
+
+#### Body da Requisição
+
+```json
+{
+  "action": "create_workflow",
+  "data": {
+    "name": "Atendimento ao Cliente",
+    "description": "Workflow para atendimento ao cliente 24/7",
+    "type": "chatflow",
+    "flowData": {
+      "nodes": [...],
+      "edges": [...]
+    },
+    "category": "customer-service",
+    "deployed": false
+  }
+}
+```
+
+### Atualizar Workflow
+
+```http
+POST /api/v1/flowise-workflows
+```
+
+#### Body da Requisição
+
+```json
+{
+  "action": "update_workflow",
+  "data": {
+    "flowiseId": "chatflow_456",
+    "name": "Atendimento ao Cliente (Atualizado)",
+    "description": "Workflow atualizado para atendimento ao cliente",
+    "deployed": true
+  }
+}
+```
+
+### Excluir Workflow (Avançado)
+
+```http
+POST /api/v1/flowise-workflows
+```
+
+#### Body da Requisição
+
+```json
+{
+  "action": "delete_workflow",
+  "data": {
+    "flowiseId": "chatflow_456",
+    "skipFlowiseDelete": false
+  }
+}
+```
+
+#### Parâmetros de Exclusão
+
+| Parâmetro | Tipo | Descrição | Padrão |
+|-----------|------|-----------|---------|
+| `flowiseId` | string | ID do workflow no Flowise | Obrigatório |
+| `skipFlowiseDelete` | boolean | Pular exclusão do Flowise externo | false |
+
+#### Exemplo de Resposta (Sucesso Completo)
+
+```json
+{
+  "success": true,
+  "deleted": {
+    "id": "workflow_123",
+    "flowiseId": "chatflow_456",
+    "name": "Atendimento ao Cliente"
+  },
+  "details": {
+    "deletedFromFlowise": true,
+    "deletedFromDatabase": true,
+    "skipFlowiseDelete": false,
+    "flowiseId": "chatflow_456"
+  },
+  "status": "SUCCESS",
+  "message": "Workflow excluído com sucesso do banco de dados e do Flowise"
+}
+```
+
+#### Exemplo de Resposta (Exclusão Parcial)
+
+```json
+{
+  "success": true,
+  "deleted": {
+    "id": "workflow_123",
+    "flowiseId": "chatflow_456",
+    "name": "Atendimento ao Cliente"
+  },
+  "details": {
+    "deletedFromFlowise": false,
+    "deletedFromDatabase": true,
+    "skipFlowiseDelete": false,
+    "flowiseError": "Falha ao excluir do Flowise: 404 - Workflow não encontrado"
+  },
+  "status": "PARTIAL",
+  "message": "Workflow excluído do banco de dados, mas ocorreu um erro ao excluir do Flowise"
+}
+```
+
+#### Exemplo de Resposta (Exclusão Apenas do Banco)
+
+```json
+{
+  "success": true,
+  "deleted": {
+    "id": "workflow_123",
+    "flowiseId": "chatflow_456",
+    "name": "Atendimento ao Cliente"
+  },
+  "details": {
+    "deletedFromFlowise": false,
+    "deletedFromDatabase": true,
+    "skipFlowiseDelete": true,
+    "flowiseId": "chatflow_456"
+  },
+  "status": "SUCCESS",
+  "message": "Workflow excluído com sucesso do banco de dados (exclusão do Flowise pulada)"
+}
+```
+
+### Estatísticas de Workflows
+
+```http
+GET /api/v1/flowise-workflows/stats
+```
+
+#### Exemplo de Resposta
+
+```json
+{
+  "success": true,
+  "data": {
+    "totalWorkflows": 25,
+    "deployedWorkflows": 18,
+    "undeployedWorkflows": 7,
+    "chatflows": 20,
+    "toolflows": 5,
+    "averageComplexity": 65.4,
+    "totalNodes": 125,
+    "categories": {
+      "customer-service": 8,
+      "automation": 6,
+      "data-processing": 5,
+      "integration": 4,
+      "other": 2
+    }
+  },
+  "message": "Estatísticas recuperadas com sucesso"
+}
+```
+
 ## 🏢 Empresas API (Admin)
 
 ### Listar Empresas

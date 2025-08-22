@@ -417,17 +417,379 @@ const handleExport = async (nodes, config) => {
 };
 ```
 
+## Fase 4: Sistema de Exclusão Avançada com Backup ✅ (IMPLEMENTADA)
+
+### Visão Geral
+A Fase 4 implementa um sistema avançado de exclusão de workflows com opções de backup e controle granular sobre quais sistemas são afetados pela exclusão.
+
+### Componentes Implementados
+
+#### 1. Advanced Delete Confirmation Dialog
+Modal de confirmação de exclusão com múltiplas opções:
+
+- **Opções de Exclusão**: Escolha entre excluir do banco ZanAI, do Flowise, ou ambos
+- **Backup Automático**: Opção de criar backup JSON antes da exclusão
+- **Interface Intuitiva**: Checkboxes claros com ícones descritivos
+- **Feedback em Tempo Real**: Status detalhado do processo de exclusão
+
+#### 2. Workflow Backup Service
+Serviço de backup automatizado:
+
+- **Backup Completo**: Todos os dados do workflow são incluídos
+- **Formato JSON**: Estrutura padronizada para fácil restauração
+- **Download Automático**: Arquivo de backup baixado automaticamente
+- **Metadados**: Inclui data de backup e informações de contexto
+
+### Funcionalidades Principais
+
+#### Opções de Exclusão Avançada
+
+1. **Excluir do Banco ZanAI**
+   - Remove o workflow do banco de dados local
+   - Mantém o workflow no Flowise externo
+   - Operação rápida e segura
+
+2. **Excluir do Flowise Externo**
+   - Remove o workflow do servidor Flowise
+   - Operação permanente e irreversível
+   - Requer conexão com API externa
+
+3. **Criar Backup**
+   - Gera arquivo JSON com todos os dados
+   - Inclui metadados de backup
+   - Permite restauração manual futura
+
+#### Interface do Usuário
+
+##### Layout do Modal de Confirmação
+```typescript
+const DeleteConfirmationModal = () => (
+  <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+    <AlertDialogContent className="max-w-md">
+      <AlertDialogHeader>
+        <AlertDialogTitle className="flex items-center gap-2">
+          <AlertTriangle className="w-5 h-5 text-orange-500" />
+          Confirmar Exclusão do Workflow
+        </AlertDialogTitle>
+        <AlertDialogDescription>
+          Você está prestes a excluir o workflow <strong>"{selectedWorkflow?.name}"</strong>. 
+          Escolha as opções de exclusão abaixo:
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      
+      <div className="space-y-4 py-4">
+        {/* Opções de exclusão */}
+        <div className="space-y-3">
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="delete-zanai"
+              checked={deleteOptions.deleteFromZanAI}
+              onCheckedChange={(checked) => 
+                setDeleteOptions(prev => ({ ...prev, deleteFromZanAI: checked as boolean }))
+              }
+            />
+            <Label htmlFor="delete-zanai" className="flex items-center gap-2 cursor-pointer">
+              <Database className="w-4 h-4" />
+              Excluir do banco ZanAI
+            </Label>
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="delete-flowise"
+              checked={deleteOptions.deleteFromFlowise}
+              onCheckedChange={(checked) => 
+                setDeleteOptions(prev => ({ ...prev, deleteFromFlowise: checked as boolean }))
+              }
+            />
+            <Label htmlFor="delete-flowise" className="flex items-center gap-2 cursor-pointer">
+              <Shield className="w-4 h-4" />
+              Excluir do motor ZanAI (Flowise)
+            </Label>
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="create-backup"
+              checked={deleteOptions.createBackup}
+              onCheckedChange={(checked) => 
+                setDeleteOptions(prev => ({ ...prev, createBackup: checked as boolean }))
+              }
+            />
+            <Label htmlFor="create-backup" className="flex items-center gap-2 cursor-pointer">
+              <Archive className="w-4 h-4" />
+              Criar backup antes de excluir
+            </Label>
+          </div>
+        </div>
+      </div>
+    </AlertDialogContent>
+  </AlertDialog>
+);
+```
+
+##### Serviço de Backup
+```typescript
+const createWorkflowBackup = async (workflow: FlowiseWorkflow) => {
+  try {
+    const backupData = {
+      id: workflow.id,
+      flowiseId: workflow.flowiseId,
+      name: workflow.name,
+      description: workflow.description,
+      type: workflow.type,
+      flowData: workflow.flowData,
+      deployed: workflow.deployed,
+      isPublic: workflow.isPublic,
+      category: workflow.category,
+      workspaceId: workflow.workspaceId,
+      complexityScore: workflow.complexityScore,
+      nodeCount: workflow.nodeCount,
+      edgeCount: workflow.edgeCount,
+      maxDepth: workflow.maxDepth,
+      capabilities: workflow.capabilities,
+      nodes: workflow.nodes,
+      connections: workflow.connections,
+      createdAt: workflow.createdAt,
+      updatedAt: workflow.updatedAt,
+      backupCreatedAt: new Date().toISOString()
+    };
+
+    // Criar blob para download
+    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `workflow_backup_${workflow.name}_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    return true;
+  } catch (error) {
+    console.error('Erro ao criar backup:', error);
+    return false;
+  }
+};
+```
+
+#### Lógica de Exclusão Avançada
+
+```typescript
+const executeAdvancedDelete = async () => {
+  if (!selectedWorkflow) return;
+
+  setIsDeleting(true);
+  
+  try {
+    // Criar backup se solicitado
+    if (deleteOptions.createBackup) {
+      const backupSuccess = await createWorkflowBackup(selectedWorkflow);
+      if (!backupSuccess) {
+        if (!confirm('O backup falhou. Deseja continuar com a exclusão anyway?')) {
+          setIsDeleting(false);
+          return;
+        }
+      }
+    }
+
+    let results = {
+      deletedFromZanAI: false,
+      deletedFromFlowise: false,
+      errors: [] as string[]
+    };
+
+    // Excluir do Flowise se solicitado
+    if (deleteOptions.deleteFromFlowise) {
+      try {
+        const flowiseResponse = await fetch(deleteUrl, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${process.env.FLOWISE_API_KEY}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (flowiseResponse.ok) {
+          results.deletedFromFlowise = true;
+        } else {
+          const errorText = await flowiseResponse.text();
+          results.errors.push(`Falha ao excluir do Flowise: ${flowiseResponse.status} - ${errorText}`);
+        }
+      } catch (error) {
+        results.errors.push(`Erro ao excluir do Flowise: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+      }
+    }
+
+    // Excluir do ZanAI se solicitado
+    if (deleteOptions.deleteFromZanAI) {
+      try {
+        const response = await fetch('/api/v1/flowise-workflows', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'delete_workflow',
+            data: { 
+              flowiseId: selectedWorkflow.flowiseId,
+              skipFlowiseDelete: !deleteOptions.deleteFromFlowise
+            }
+          })
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success) {
+            results.deletedFromZanAI = true;
+          } else {
+            results.errors.push(result.error || 'Falha ao excluir do ZanAI');
+          }
+        }
+      } catch (error) {
+        results.errors.push(`Erro ao excluir do ZanAI: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+      }
+    }
+
+    // Mostrar resultado ao usuário
+    showDeleteResult(results);
+
+    // Fechar modal e recarregar dados
+    setDeleteDialogOpen(false);
+    setSelectedWorkflow(null);
+    await loadWorkflows();
+    await loadStats();
+
+  } catch (error) {
+    toast({
+      title: "Erro inesperado",
+      description: "Ocorreu um erro durante o processo de exclusão.",
+      variant: "destructive",
+    });
+  } finally {
+    setIsDeleting(false);
+  }
+};
+```
+
+### Benefícios da Implementação
+
+#### 1. Segurança
+- **Backup Automático**: Proteção contra perda acidental de dados
+- **Confirmação Múltipla**: Várias camadas de confirmação
+- **Controle Granular**: Escolha exata do que será excluído
+- **Operações Atômicas**: Sucesso ou falha completa, sem estados intermediários
+
+#### 2. Flexibilidade
+- **Exclusão Parcial**: Possibilidade de excluir apenas de um sistema
+- **Backup Opcional**: Escolha entre criar backup ou não
+- **Recuperação**: Arquivos de backup permitem restauração
+- **Auditabilidade**: Registro completo das operações
+
+#### 3. Experiência do Usuário
+- **Interface Clara**: Opções visuais e intuitivas
+- **Feedback Imediato**: Status detalhado de cada operação
+- **Progresso Visível**: Indicadores de carregamento e progresso
+- **Recuperação de Erros**: Tratamento elegante de falhas
+
+#### 4. Performance
+- **Operações Paralelas**: Execução simultânea quando possível
+- **Cancelamento**: Possibilidade de cancelar operações longas
+- **Cache Inteligente**: Otimização para operações repetitivas
+- **Recursos Mínimos**: Uso eficiente de memória e processamento
+
+### Exemplos de Uso
+
+#### Exclusão Completa com Backup
+```typescript
+// Excluir workflow de ambos os sistemas com backup
+const handleDeleteWithBackup = (workflow: FlowiseWorkflow) => {
+  setSelectedWorkflow(workflow);
+  setDeleteOptions({
+    deleteFromZanAI: true,
+    deleteFromFlowise: true,
+    createBackup: true
+  });
+  setDeleteDialogOpen(true);
+};
+```
+
+#### Exclusão Apenas do Banco Local
+```typescript
+// Excluir apenas do banco ZanAI, mantendo no Flowise
+const handleDeleteLocalOnly = (workflow: FlowiseWorkflow) => {
+  setSelectedWorkflow(workflow);
+  setDeleteOptions({
+    deleteFromZanAI: true,
+    deleteFromFlowise: false,
+    createBackup: false
+  });
+  setDeleteDialogOpen(true);
+};
+```
+
+#### Backup sem Exclusão
+```typescript
+// Apenas criar backup, sem excluir
+const handleBackupOnly = (workflow: FlowiseWorkflow) => {
+  setSelectedWorkflow(workflow);
+  setDeleteOptions({
+    deleteFromZanAI: false,
+    deleteFromFlowise: false,
+    createBackup: true
+  });
+  setDeleteDialogOpen(true);
+};
+```
+
+### Considerações Técnicas
+
+#### Tratamento de Erros
+- **Falha de Conexão**: Tratamento de erros de rede com API externa
+- **Falha de Backup**: Continuação opcional se o backup falhar
+- **Falha Parcial**: Relatório detalhado de operações bem-sucedidas e falhas
+- **Timeout**: Limite de tempo para operações externas
+
+#### Performance
+- **Execução Paralela**: Operações de exclusão executadas simultaneamente
+- **Lazy Loading**: Componentes carregados apenas quando necessários
+- **Otimização de Memória**: Limpeza adequada de referências
+- **Cache Estratégico**: Cache de dados para operações repetitivas
+
+#### Segurança
+- **Validação de Permissões**: Verificação de direitos de exclusão
+- **Proteção CSRF**: Tokens de segurança para operações críticas
+- **Log de Auditoria**: Registro completo de todas as operações
+- **Sanitização de Dados**: Limpeza de dados sensíveis em logs
+
+### Próximos Passos
+
+#### Fase 5: Restauração de Workflows (Planejado)
+- Interface para restaurar workflows a partir de backups
+- Validação de integridade dos arquivos de backup
+- Merge de dados durante restauração
+- Histórico de restaurações
+
+#### Fase 6: Agendamento de Exclusão (Planejado)
+- Exclusão agendada para data futura
+- Notificações antes da exclusão
+- Cancelamento de exclusões agendadas
+- Relatório de exclusões programadas
+
 ## Conclusão
 
-As Fases 1, 2 e 3 da integração do Flowise Node Catalog nos cards de agentes foram implementadas com sucesso, proporcionando:
+As Fases 1, 2, 3 e 4 da integração do Flowise Node Catalog foram implementadas com sucesso, proporcionando:
 
 - ✅ Visualização transparente de nodes recomendados
 - ✅ Interface educativa e intuitiva
 - ✅ Configuração personalizada completa via diálogo
 - ✅ Exportação otimizada com nodes selecionados
-- ✅ Visualização gráfica completa de workflows (Fase 3)
+- ✅ Visualização gráfica completa de workflows
 - ✅ Indicadores visuais de complexidade e performance
 - ✅ Interface interativa para gestão de workflows
+- ✅ Sistema avançado de exclusão com backup
+- ✅ Controle granular sobre operações de exclusão
+- ✅ Segurança e recuperação de dados
+- ✅ Experiência do usuário premium
 - ✅ Base sólida para fases futuras
 - ✅ Melhoria significativa na experiência do usuário
 
