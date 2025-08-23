@@ -3,10 +3,10 @@ import { db } from '@/lib/db';
 import { auth } from '@/lib/auth';
 
 interface StudioWorkflowRequest {
-  action: 'import_workflow' | 'export_workflow' | 'create_workflow';
+  action: 'import_workflow' | 'export_workflow' | 'create_workflow' | 'get_imported_workflows';
   data: {
-    workflow: any;
-    source: 'flowise_learning' | 'agents' | 'manual';
+    workflow?: any;
+    source?: 'flowise_learning' | 'agents' | 'manual' | 'learning';
   };
 }
 
@@ -24,9 +24,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { action, data }: StudioWorkflowRequest = body;
 
-    if (!action || !data || !data.workflow) {
+    if (!action || !data) {
       return NextResponse.json(
-        { error: 'Missing required fields: action, data, workflow' },
+        { error: 'Missing required fields: action, data' },
         { status: 400 }
       );
     }
@@ -42,6 +42,9 @@ export async function POST(request: NextRequest) {
       
       case 'create_workflow':
         return await handleCreateWorkflow(workflow, session.user.id);
+      
+      case 'get_imported_workflows':
+        return await handleGetImportedWorkflows(source, session.user.id);
       
       default:
         return NextResponse.json(
@@ -248,6 +251,69 @@ async function handleCreateWorkflow(workflow: any, userId: string) {
 
   } catch (error) {
     console.error('❌ Error creating workflow in Studio:', error);
+    throw error;
+  }
+}
+
+async function handleGetImportedWorkflows(source: string, userId: string) {
+  try {
+    console.log(`📋 Getting imported workflows from source: ${source}`);
+
+    // Get all workflows for the user first
+    const workflows = await db.studioWorkflow.findMany({
+      where: {
+        userId
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+
+    // Filter workflows based on source in memory (since SQLite doesn't support JSON path queries)
+    let filteredWorkflows = workflows;
+    
+    if (source === 'learning') {
+      filteredWorkflows = workflows.filter(workflow => {
+        try {
+          const config = JSON.parse(workflow.config || '{}');
+          return config.source === 'flowise_learning' || 
+                 config.source === 'learning' ||
+                 workflow.description?.includes('Imported from learning') ||
+                 workflow.description?.includes('Imported from flowise_learning');
+        } catch {
+          return false;
+        }
+      });
+    }
+
+    // Format the workflows for the frontend
+    const formattedWorkflows = filteredWorkflows.map(workflow => {
+      const config = JSON.parse(workflow.config || '{}');
+      
+      return {
+        id: workflow.id,
+        name: workflow.name,
+        description: workflow.description,
+        type: workflow.type,
+        complexityScore: workflow.complexityScore || config.complexity || 0,
+        nodeCount: workflow.nodeCount || config.nodeCount || 0,
+        edgeCount: workflow.edgeCount || config.edgeCount || 0,
+        importedAt: config.importedAt || workflow.createdAt.toISOString(),
+        source: workflow.source || config.source || source,
+        status: workflow.status,
+        flowData: workflow.flowData || '{}'
+      };
+    });
+
+    console.log(`✅ Found ${formattedWorkflows.length} imported workflows`);
+
+    return NextResponse.json({
+      workflows: formattedWorkflows,
+      total: formattedWorkflows.length
+    });
+
+  } catch (error) {
+    console.error('❌ Error getting imported workflows:', error);
     throw error;
   }
 }
