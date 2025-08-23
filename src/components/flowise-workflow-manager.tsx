@@ -142,6 +142,7 @@ export default function FlowiseWorkflowManager() {
     maxComplexity: '',
     search: ''
   });
+  const [showAgents, setShowAgents] = useState(false);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [exportLogs, setExportLogs] = useState<any[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
@@ -176,6 +177,10 @@ export default function FlowiseWorkflowManager() {
     loadWorkflows();
     loadStats();
   }, []);
+
+  useEffect(() => {
+    loadWorkflows();
+  }, [showAgents]);
 
   const loadExportLogs = async () => {
     setLoadingLogs(true);
@@ -230,7 +235,7 @@ export default function FlowiseWorkflowManager() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'get_workflows',
-          data: { filters, page: 1, limit: 50 }
+          data: { filters, page: 1, limit: 50, includeAgents: showAgents }
         })
       });
 
@@ -256,7 +261,7 @@ export default function FlowiseWorkflowManager() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'get_workflows',
-          data: { page: 1, limit: 1 }
+          data: { page: 1, limit: 1, includeAgents: false }
         })
       });
 
@@ -1623,6 +1628,18 @@ export default function FlowiseWorkflowManager() {
               min="0"
               max="100"
             />
+
+            <div className="flex items-center space-x-2 p-3 border rounded-lg">
+              <Checkbox
+                id="show-agents"
+                checked={showAgents}
+                onCheckedChange={(checked) => setShowAgents(checked as boolean)}
+              />
+              <Label htmlFor="show-agents" className="flex items-center gap-2 cursor-pointer">
+                <Brain className="w-4 h-4" />
+                Mostrar Agentes Transformados
+              </Label>
+            </div>
           </div>
         </CardContent>
       </Card>
