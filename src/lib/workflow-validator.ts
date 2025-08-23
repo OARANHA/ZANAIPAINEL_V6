@@ -882,6 +882,53 @@ export class WorkflowValidator {
     
     return 'data flow';
   }
+
+  /**
+   * Static method for simple workflow validation (backward compatibility)
+   */
+  static validateWorkflow(nodes: any[], edges: any[]): ValidationResult {
+    const validator = new WorkflowValidator();
+    
+    // Convert nodes to FlowiseNode format if needed
+    const flowiseNodes: FlowiseNode[] = nodes.map(node => ({
+      id: node.id,
+      data: {
+        name: node.data?.label || node.data?.name || node.name || 'Unknown',
+        category: node.data?.category || node.category || 'Unknown',
+        inputs: node.data?.inputs || {},
+        inputParams: node.data?.inputParams || []
+      },
+      position: node.position || { x: 0, y: 0 }
+    }));
+
+    // Convert edges to FlowiseEdge format if needed
+    const flowiseEdges: FlowiseEdge[] = edges.map(edge => ({
+      id: edge.id || `edge-${edge.source}-${edge.target}`,
+      source: edge.source,
+      target: edge.target,
+      sourceHandle: edge.sourceHandle || 'source',
+      targetHandle: edge.targetHandle || 'target'
+    }));
+
+    // Perform basic validation
+    const structureValidation = validator['validateStructure'](flowiseNodes, flowiseEdges);
+    const nodeValidation = validator['validateNodeConfigurations'](flowiseNodes);
+    const metrics = validator['calculateMetrics'](flowiseNodes, flowiseEdges, validator['analyzeFlow'](flowiseNodes, flowiseEdges));
+    const suggestions = validator['generateOptimizationSuggestions'](flowiseNodes, flowiseEdges, metrics);
+
+    // Combine results
+    const errors = [...structureValidation.errors, ...nodeValidation.errors];
+    const warnings = [...structureValidation.warnings, ...nodeValidation.warnings];
+
+    return {
+      valid: errors.length === 0,
+      errors,
+      warnings,
+      suggestions,
+      score: validator['calculateValidationScore'](errors, warnings, metrics),
+      metrics
+    };
+  }
 }
 
 // Exportar instância única do serviço
